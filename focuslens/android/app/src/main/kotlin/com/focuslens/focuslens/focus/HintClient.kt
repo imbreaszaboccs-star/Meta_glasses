@@ -214,7 +214,7 @@ object HintClient {
     /** Returns null when healthy, otherwise a short reason. Blocking. */
     fun health(): String? {
         if (!isConfigured) return "not configured"
-        val conn = runCatching { URL("$baseUrl/health").openConnection() as HttpURLConnection }.getOrNull() ?: return "bad url"
+        val conn = runCatching { URL("$baseUrl/api/health").openConnection() as HttpURLConnection }.getOrNull() ?: return "bad url"
         return try {
             conn.connectTimeout = 4_000
             conn.readTimeout = 4_000

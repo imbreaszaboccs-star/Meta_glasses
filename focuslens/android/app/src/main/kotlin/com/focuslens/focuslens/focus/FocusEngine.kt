@@ -528,7 +528,10 @@ class FocusEngine(private val app: Context) {
                 onSpeech = if (config.wakeEngine == "dat" && micPermission == "granted") { t, f -> datWake?.onText(t, f) } else null,
             )
             glasses = gs
-            gs.start(id, withDisplay = device.isDisplayCapable(), withCamera = cam, withAudio = withAudio)
+            displayCapable = device.isDisplayCapable()
+            // v2: the web app owns the display. Attaching the DAT display would switch the glasses to an empty
+            // phone-rendered (transparent) screen on top of the web app, so only do it for the DAT fallback.
+            gs.start(id, withDisplay = displayCapable && config.hudSource == "dat", withCamera = cam, withAudio = withAudio)
         }
     }
 
@@ -938,8 +941,8 @@ class FocusEngine(private val app: Context) {
 
     private fun speakIfNeeded(text: String) {
         val g = glasses
-        val glassesWithoutDisplay = g?.isActive == true && !g.hasDisplay
-        if (config.readAloud || glassesWithoutDisplay) scope.launch { speaker.speak(text, config.language, hasDisplay = g?.hasDisplay == true) }
+        val glassesWithoutDisplay = g?.isActive == true && !showsHud(g)
+        if (config.readAloud || glassesWithoutDisplay) scope.launch { speaker.speak(text, config.language, hasDisplay = showsHud(g)) }
     }
 
     private fun recordLatency(t: JSONObject, ok: Boolean) {
@@ -1155,7 +1158,7 @@ class FocusEngine(private val app: Context) {
     /** First display of a block without a goal: ask for it once (pinch = skip). True if the prompt took the HUD. */
     private fun askGoal(): Boolean {
         val r = run ?: return false
-        if (r.goalAsked || r.goal.isNotEmpty() || testMode || phase != Phase.IDLE || panel != null || glasses?.hasDisplay != true) return false
+        if (r.goalAsked || r.goal.isNotEmpty() || testMode || phase != Phase.IDLE || panel != null || !showsHud(glasses)) return false
         r.goalAsked = true
         startDump("goal")
         return phase == Phase.DUMP
@@ -1168,7 +1171,7 @@ class FocusEngine(private val app: Context) {
         if (run == null) return
         if (!config.nudges) return setAttention(false)
         val free = (phase == Phase.IDLE || phase == Phase.QUEST) && panel == null && !panelLoading &&
-            !testMode && glasses?.hasDisplay == true
+            !testMode && showsHud(glasses)
         val out = policy.tick(machine.state, free) { nudges.tick() }
         setAttention(out.level == 1)
         if (out.level == 2) out.kind?.let(::showNudge)
@@ -1296,6 +1299,10 @@ class FocusEngine(private val app: Context) {
         showHud(HudScreen.Idle(compact = prefs.getInt("blocksStarted", 0) > 3, paused = micPaused, goal = run?.goal.orEmpty()))
     }
 
+    /** Glasses with a screen for our HUD: the DAT display (fallback) or display-capable glasses running the web app. */
+    private var displayCapable = false
+    private fun showsHud(g: GlassesSession?) = g != null && (g.hasDisplay || (config.hudSource == "web" && displayCapable))
+
     private fun showHud(screen: HudScreen) {
         currentScreen = screen
         if (config.hudSource == "dat") glasses?.show(Hud.render(screen))
@@ -1390,7 +1397,7 @@ class FocusEngine(private val app: Context) {
                 "cameraPermission" to cameraPermission,
                 "micPermission" to micPermission,
                 "phase" to (if (g != null) glassesState.phase.name else GlassesPhase.OFF.name),
-                "hasDisplay" to (g?.hasDisplay ?: false),
+                "hasDisplay" to showsHud(g),
                 "hasCamera" to (g?.hasCamera ?: false),
                 "error" to glassesState.error,
                 "updateRequired" to updateRequired,

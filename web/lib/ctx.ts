@@ -21,3 +21,14 @@ export function getCtx(): Ctx {
   return ctx;
 }
 
+
+/** Runs a handler with the context; a missing env var becomes a 503 naming the variable (never its value). */
+export async function withCtx(fn: (c: Ctx) => Promise<Response>): Promise<Response> {
+  let c: Ctx;
+  try { c = getCtx(); } catch (e) {
+    const detail = e instanceof Error ? e.message : 'relay not configured';
+    console.error('relay config:', detail);
+    return Response.json({ detail: `server misconfigured: ${detail}` }, { status: 503, headers: { 'cache-control': 'no-store' } });
+  }
+  return fn(c);
+}
