@@ -1,4 +1,4 @@
-1. "Holistic and Connected Concept: FocusLens
+1.  "Holistic and Connected Concept: FocusLens
 Main Pitch: „Phones distract people with ADHD. Glasses give them back control. FocusLens transforms the visual and audio chaos in front of you into a single next step.“
 
 Problem: The Mobile Phone Trap and Loss of Context
