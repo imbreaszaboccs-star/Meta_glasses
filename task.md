@@ -2,7 +2,7 @@
 
 Goal: take the app from the *Gesture Lab* spike to a real Android app that does everything in [idea.md](idea.md), on **Meta Ray-Ban Display + Neural Band**, against the backend already running on the VPS.
 
-Read first: [ARCHITECTURE.md](ARCHITECTURE.md) (what was verified on hardware), [backend/README.md](backend/README.md) (API contract), [GOOGLE_MODELS.md](GOOGLE_MODELS.md) (latency numbers).
+Read first: [ARCHITECTURE.md](ARCHITECTURE.md) (what was verified on hardware), [web/lib/meta.ts](web/lib/meta.ts) + [web/lib/ai.ts](web/lib/ai.ts) (API contract), [GOOGLE_MODELS.md](GOOGLE_MODELS.md) (latency numbers).
 
 ---
 

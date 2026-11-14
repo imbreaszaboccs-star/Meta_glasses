@@ -28,7 +28,7 @@ Kód je hotový pro všechny fáze kromě FCM. **Nic z toho zatím neběželo na
 | 4 Muse | MCP `/api/mcp` (JSON-RPC, bez SSE), OAuth 2.1 + PKCE, kde login = párovací kód, bezstavově přes HMAC. Telefon odpovídá přes `/api/r/res`. | `web/lib/mcp.ts`, `RemoteLink.kt` |
 | 5 stretch | wake word přes `mwdat-speech` (`wakeEngine=dat`, default `vosk`). **FCM chybí:** potřebuje Firebase projekt (`google-services.json` + service account). | `DatWakeSpotter.kt` |
 
-Odchylky od textu níže: hint route nezapisuje view sama (zobrazí ho telefon), z `muse:{subject}` je bezstavový token `m.id.gen.mac`, MLP místo LiteRT. `backend/` se smaže po end-to-end testu na brýlích.
+Odchylky od textu níže: hint route nezapisuje view sama (zobrazí ho telefon), z `muse:{subject}` je bezstavový token `m.id.gen.mac`, MLP místo LiteRT. `backend/` je smazaný (15. 11. 2026), běží jen `web/`.
 
 **Deploy:** Vercel projekt s rootem `web/`, Upstash v `eu-central-1`, env proměnné podle `web/.env.example` (+ `RELAY_SECRET`), v telefonu `focuslens.api_url` v `local.properties`.
 

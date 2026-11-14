@@ -1,8 +1,5 @@
 # Meta DAT sample repo (referenční kód, klonuje se: git clone https://github.com/facebook/meta-wearables-dat-android vendor/meta-wearables-dat-android)
 vendor/
 
-# backend
-backend/.env
-backend/smoke_tts.wav
 __pycache__/
 .venv/

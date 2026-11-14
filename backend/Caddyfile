@@ -1,6 +1,0 @@
-lens.projectviridis.dev {
-	request_body {
-		max_size 20MB
-	}
-	reverse_proxy api:8000
-}

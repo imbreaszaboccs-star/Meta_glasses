@@ -77,6 +77,10 @@ class SpeechMeter {
 
     fun ratio(): Float = count.toFloat() / FRAMES
 
+    /** True when none of the last [frames] 100 ms frames (≤ [FRAMES]) was loud. */
+    @Synchronized
+    fun quietFor(frames: Int): Boolean = (1..frames).none { loud[(i - it + FRAMES) % FRAMES] }
+
     @Synchronized
     fun reset() { loud.fill(false); count = 0 }
 

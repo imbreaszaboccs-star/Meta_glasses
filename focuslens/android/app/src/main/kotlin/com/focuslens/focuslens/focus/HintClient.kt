@@ -12,7 +12,7 @@ import java.util.UUID
 import org.json.JSONArray
 import org.json.JSONObject
 
-/** Backend contract: see backend/README.md. */
+/** Server contract: web/app/api/ai/hint/route.ts + web/lib/meta.ts (request) and web/lib/ai.ts (response). */
 class HintRequest(
     val photo: ByteArray?,
     val audio: EncodedAudio?,

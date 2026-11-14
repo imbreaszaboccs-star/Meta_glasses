@@ -36,7 +36,7 @@ Produktová idea je v [idea.md](idea.md), práce s Meta SDK v [META_WEARABLES_SE
 | `HintPipeline` | Dart | foto + audio paralelně → backend → výstup + karta |
 | `OutputService` | Dart | HUD, pokud jsou brýle Display, jinak TTS přes A2DP |
 | `CardStore` | Dart | ukládá karty na disk, seznam pro večerní review |
-| Backend `/hint`, `/tts` | FastAPI na VPS `lens.projectviridis.dev` ([backend/](backend/README.md)) | Gemini (foto + audio v jednom volání), drží API klíče |
+| Server `/api/ai/hint`, `/api/ai/tts` | Next.js na Vercelu `lens.projectviridis.dev` ([web/](web/)) | Gemini (foto + audio v jednom volání), drží API klíče |
 
 ---
 
@@ -210,7 +210,7 @@ Velké tlačítko v aplikaci na telefonu, Bluetooth media tlačítko a tlačítk
 
 ## 6. Backend `/hint`
 
-FastAPI v Dockeru na VPS `https://lens.projectviridis.dev` (za Cloudflare), kód a nasazení v [backend/](backend/README.md). Výběr modelů: [GOOGLE_MODELS.md](GOOGLE_MODELS.md). Proč backend a ne volat AI přímo z appky: **API klíč nesmí být v aplikaci** (dá se z APK vytáhnout).
+Next.js na Vercelu `https://lens.projectviridis.dev`, kód v [web/](web/) (Python `backend/` smazán 15. 11. 2026). Výběr modelů: [GOOGLE_MODELS.md](GOOGLE_MODELS.md). Proč backend a ne volat AI přímo z appky: **API klíč nesmí být v aplikaci** (dá se z APK vytáhnout).
 
 ### Kontrakt
 ```
@@ -295,8 +295,7 @@ focuslens/
   android/app/src/main/kotlin/…/GlassesPlugin.kt   # DAT Android
   ios/Runner/GlassesPlugin.swift                    # DAT iOS
   test/ring_buffer_test.dart
-backend/
-  app.py, ai.py                   # FastAPI (/hint, /tts, /health) + volání Gemini
+web/                              # Next.js na Vercelu: /api/ai/* (Gemini), /api/r/* (relay), /api/mcp, /g (web app na brýlích)
 ```
 
 Závislosti (Flutter): `record`, `flutter_foreground_task`, `flutter_tts`, `http`, `path_provider`, `just_audio` (přehrání karty). Nic dalšího, dokud to není potřeba.
@@ -324,7 +323,7 @@ Závislosti (Flutter): `record`, `flutter_foreground_task`, `flutter_tts`, `http
 | 4 | Background mikrofon (zvlášť iOS) | buffer přestane běžet | foreground service / audio background mode. Test s uzamčeným telefonem 60 min |
 | 5 | DAT preview: max 100 testerů, nelze publikovat | žádný veřejný release | pro hackathon / pilot OK. Sledovat changelog |
 | 6 | Upload 5,5 MB na slabé síti | latence | změřit. Komprese (§3.4) |
-| 7 | Porozumění češtině z kapsy | špatná nápověda | `backend/smoke.py` na nahrávce z reálné přednášky; případně `HINT_MODEL=gemini-3.8-flash` |
+| 7 | Porozumění češtině z kapsy | špatná nápověda | poslat reálnou nahrávku z přednášky na `/api/ai/hint`; případně `HINT_MODEL=gemini-3.8-flash` |
 
 ---
 

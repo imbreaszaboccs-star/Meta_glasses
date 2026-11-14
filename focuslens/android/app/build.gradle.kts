@@ -44,7 +44,7 @@ android {
         manifestPlaceholders["mwdat_application_id"] = localProps.getProperty("mwdat_application_id", "0")
         manifestPlaceholders["mwdat_client_token"] = localProps.getProperty("mwdat_client_token", "0")
 
-        // Backend (backend/README.md). The token is the shared APP_TOKEN from backend/.env.
+        // Server = web/ on Vercel. The token is the shared APP_TOKEN from web/.env (Vercel env).
         buildConfigField("String", "API_URL", quoted(localProps.getProperty("focuslens.api_url", "https://lens.projectviridis.dev")))
         buildConfigField("String", "API_TOKEN", quoted(localProps.getProperty("focuslens.api_token", "")))
     }

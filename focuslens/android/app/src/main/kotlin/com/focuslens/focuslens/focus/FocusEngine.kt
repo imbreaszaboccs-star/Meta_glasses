@@ -746,7 +746,7 @@ class FocusEngine(private val app: Context) {
         quest = null
         if (now - lastHintAt < 60_000) setReaction(recent.lastOrNull(), "asked_again")
         log("hint", "help from $source")
-        runHint(chainCardId = null)
+        runHint(chainCardId = null, tailMaxMs = if (source == "wake word") TAIL_WAKE_MS else TAIL_PINCH_MS)
     }
 
     /** Quick-save the current slide/page + recent audio into evening review without waiting for AI on the HUD. */
@@ -850,7 +850,9 @@ class FocusEngine(private val app: Context) {
 
     // ------------------------------------------------------------------ the hint pipeline
 
-    private fun runHint(chainCardId: String?, ask: String = "help", prevOverride: List<String>? = null) {
+    /** [tailMaxMs] > 0: keep recording after the trigger until the speech ends (at most this long), so the request said
+     *  right before/after the pinch or "hey lens" is in the clip. */
+    private fun runHint(chainCardId: String?, ask: String = "help", prevOverride: List<String>? = null, tailMaxMs: Long = 0) {
         policy.onUser(); userAt = clock(); recorder?.event("hint")
         val waiter = helpWaiter.also { helpWaiter = null }
         hintJob?.cancel(); hideJob?.cancel()
@@ -876,6 +878,11 @@ class FocusEngine(private val app: Context) {
             var completed = false
             try {
                 val photoD = async { takePhoto(g) }
+                mic?.takeIf { tailMaxMs > 0 && it.isListening }?.let { m ->
+                    val end = SystemClock.elapsedRealtime() + tailMaxMs
+                    delay(if (tailMaxMs >= TAIL_WAKE_MS) TAIL_WAKE_MIN_MS else TAIL_MIN_MS)
+                    while (!m.speech.quietFor(TAIL_QUIET_FRAMES) && SystemClock.elapsedRealtime() < end) delay(100)
+                }
                 val pcm = mic?.takeIf { it.isListening && it.bufferedSeconds >= 1 }?.snapshot()
                 val audioD = async(Dispatchers.Default) {
                     pcm?.let { AudioCodec.encode(it, MicRing.SAMPLE_RATE, app.cacheDir) }
@@ -1673,6 +1680,12 @@ class FocusEngine(private val app: Context) {
         private val SITUATIONS = setOf("lecture", "homework", "desk", "reading")
         val SIMS = setOf("start", "lecture_hint", "homework_quest", "bookmark", "milestone", "stuck_l1", "stuck_l2", "lapse_l2", "key_l2", "doze_l2", "stop")
         private const val RECENT = 6
+        // ponytail: energy VAD on SpeechMeter (RMS_MIN); a loud room just waits until the cap. Calibration knobs.
+        private const val TAIL_MIN_MS = 500L        // pinch: audio still in the AudioRecord buffer + the last word
+        private const val TAIL_PINCH_MS = 2_500L
+        private const val TAIL_WAKE_MIN_MS = 1_500L // "hey lens" fires mid-sentence: give them time to say the request
+        private const val TAIL_WAKE_MS = 8_000L
+        private const val TAIL_QUIET_FRAMES = 10    // 1 s of silence = they finished speaking
         private const val PANEL_TIMEOUT_MS = 20_000L
         private const val NOTE_TIMEOUT_MS = Dictation.NOTE_MAX_MS + 1_000L
         private val RECONNECT_DELAYS = longArrayOf(2_000, 5_000, 10_000)
