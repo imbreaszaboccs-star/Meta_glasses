@@ -36,7 +36,7 @@ class RemoteLinkTest {
         assertNull(v("set_config", """{"nudges":false,"mode":"auto"}"""))
         assertEquals("bad flag", v("set_config", """{"wakeWord":"yes"}"""))
         assertEquals("bad mode", v("set_config", """{"mode":"x"}"""))
-        assertEquals(mapOf<String, Any>("readAloud" to true), RemoteProto.configPatch(JSONObject("""{"readAloud":true,"language":"de"}""")))
+        assertEquals(mapOf<String, Any>("readAloud" to true, "language" to "de"), RemoteProto.configPatch(JSONObject("""{"readAloud":true,"language":"de","foo":1}""")))
     }
 
     @Test
@@ -61,6 +61,41 @@ class RemoteLinkTest {
         assertEquals("bad text", v("add_note", """{"text":5}"""))
         assertEquals("bad text", v("add_note"))
         assertNull(v("last_hint"))
+    }
+
+    @Test
+    fun validateContractV2Commands() {
+        for (t in listOf("next", "reconnect", "inbox_sync")) assertNull(t, v(t))
+        assertNull(v("card_reviewed", """{"id":"a","reviewed":true}"""))
+        assertEquals("bad reviewed", v("card_reviewed", """{"id":"a","reviewed":1}"""))
+        assertEquals("bad id", v("card_reviewed", """{"reviewed":true}"""))
+        assertNull(v("card_delete", """{"id":"a"}"""))
+        assertEquals("bad id", v("card_delete"))
+        assertNull(v("imu_label", """{"label":"none"}"""))
+        assertNull(v("imu_label", """{"label":"looking_around"}"""))
+        assertEquals("bad label", v("imu_label", """{"label":"dancing"}"""))
+        assertEquals("bad label", v("imu_label"))
+        assertNull(v("web_seen", """{"visible":false}"""))
+        assertEquals("bad visible", v("web_seen", """{"visible":"yes"}"""))
+    }
+
+    @Test
+    fun validateExtendedConfig() {
+        assertNull(v("set_config", """{"language":"cs","bufferSec":120,"hudTimeoutSec":0,"keepAudio":"all","audioSource":"glasses","retentionDays":7}"""))
+        assertNull(v("set_config", """{"bufferSec":150.0,"retentionDays":30.0}""")) // JSON numbers may be doubles
+        assertNull(v("set_config", """{"dozeSound":true,"collect":false}"""))
+        assertEquals("bad value", v("set_config", """{"language":"fr"}"""))
+        assertEquals("bad value", v("set_config", """{"bufferSec":90}"""))
+        assertEquals("bad value", v("set_config", """{"bufferSec":120.5}"""))
+        assertEquals("bad value", v("set_config", """{"hudTimeoutSec":30}"""))
+        assertEquals("bad value", v("set_config", """{"retentionDays":14}"""))
+        assertEquals("bad value", v("set_config", """{"keepAudio":"some"}"""))
+        assertEquals("bad value", v("set_config", """{"audioSource":"cloud"}"""))
+        assertEquals("bad flag", v("set_config", """{"collect":"yes"}"""))
+        assertEquals("nothing to change", v("set_config", """{"foo":1}"""))
+        val patch = RemoteProto.configPatch(JSONObject("""{"bufferSec":150.0,"language":"de","dozeSound":true,"foo":1}"""))
+        assertEquals(mapOf("bufferSec" to 150, "language" to "de", "dozeSound" to true), patch)
+        assertTrue(patch["bufferSec"] is Int)
     }
 
     @Test

@@ -55,12 +55,22 @@ object RemoteProto {
             a.has("goal") && !a.isNull("goal") && a.opt("goal") !is String -> "bad goal"
             else -> null
         }
-        "stop_focus", "help", "pause_mic", "resume_mic", "review_load", "refresh", "last_hint" -> null
+        "stop_focus", "help", "pause_mic", "resume_mic", "review_load", "refresh", "last_hint", "next", "reconnect", "inbox_sync" -> null
+        "card_reviewed" -> when {
+            str(a, "id", 100) == null -> "bad id"
+            a.opt("reviewed") !is Boolean -> "bad reviewed"
+            else -> null
+        }
+        "card_delete" -> if (str(a, "id", 100) == null) "bad id" else null
+        "imu_label" -> if ((a.opt("label") as? String) !in IMU_LABELS) "bad label" else null
+        "web_seen" -> if (a.opt("visible") !is Boolean) "bad visible" else null
         "add_note" -> if (str(a, "text", 300) == null) "bad text" else null
         "set_config" -> when {
-            listOf("mode", "nudges", "wakeWord", "readAloud").none { a.has(it) } -> "nothing to change"
+            CONFIG_KEYS.none { a.has(it) } -> "nothing to change"
             a.has("mode") && (a.opt("mode") as? String) !in FocusConfig.MODES -> "bad mode"
-            listOf("nudges", "wakeWord", "readAloud").any { a.has(it) && a.opt(it) !is Boolean } -> "bad flag"
+            BOOL_KEYS.any { a.has(it) && a.opt(it) !is Boolean } -> "bad flag"
+            ENUMS.any { (k, ok) -> a.has(k) && (a.opt(k) as? String) !in ok } -> "bad value"
+            INTS.any { (k, ok) -> a.has(k) && integral(a.opt(k)) !in ok } -> "bad value"
             else -> null
         }
         "inbox_done" -> when {
@@ -73,9 +83,20 @@ object RemoteProto {
         else -> "unknown command"
     }
 
+    val IMU_LABELS = setOf("none") + Act.entries.map { it.name.lowercase() }
+    private val BOOL_KEYS = listOf("nudges", "wakeWord", "readAloud", "dozeSound", "collect")
+    private val ENUMS = mapOf(
+        "language" to setOf("en", "cs", "sk", "de", "pl"), "keepAudio" to FocusConfig.KEEP, "audioSource" to FocusConfig.AUDIO,
+    )
+    private val INTS = mapOf("bufferSec" to setOf(60, 120, 150), "hudTimeoutSec" to setOf(0, 10, 20, 40), "retentionDays" to setOf(0, 7, 30))
+    private val CONFIG_KEYS = listOf("mode") + BOOL_KEYS + ENUMS.keys + INTS.keys
+
+    /** JSON numbers arrive as Int or Double: the Int if the value is integral, else null. */
+    private fun integral(v: Any?): Int? = (v as? Number)?.let { n -> n.toDouble().takeIf { it == Math.floor(it) && Math.abs(it) < 1e9 }?.toInt() }
+
     /** Only the keys the glasses menu may change, as an engine config map. */
     fun configPatch(a: JSONObject): Map<String, Any> = buildMap {
-        for (k in listOf("mode", "nudges", "wakeWord", "readAloud")) if (a.has(k)) put(k, a.get(k))
+        for (k in CONFIG_KEYS) if (a.has(k)) put(k, if (k in INTS) integral(a.get(k)) ?: continue else a.get(k))
     }
 
     fun clip(s: String?, n: Int): String = (s ?: "").let { if (it.length > n) it.take(n - 1) + "…" else it }
@@ -245,6 +266,10 @@ class RemoteLink(private val app: Context, private val engine: FocusEngine) : En
     private class Reply { var text: String? = null; var wait: CompletableDeferred<String?>? = null }
 
     private suspend fun handle(c: RemoteCmd) {
+        if (c.type == "web_seen") { // no ack, no log: it is a heartbeat
+            if (RemoteProto.validate(c.type, c.args) == null) main { engine.onWebSeen(c.args.getBoolean("visible")) }
+            return
+        }
         val rep = Reply()
         val err = RemoteProto.validate(c.type, c.args) ?: try {
             exec(c, rep)
@@ -308,6 +333,12 @@ class RemoteLink(private val app: Context, private val engine: FocusEngine) : En
                 null
             }
             "last_hint" -> { rep.text = main { engine.lastHintText() } ?: Strings.noHintYet; null }
+            "next" -> main { if (!engine.isRunning) "no focus block running" else { engine.next(); null } }
+            "reconnect" -> main { engine.reconnectGlasses(); null }
+            "inbox_sync" -> Integrations.syncInbox(engine.inbox).also { if (it.retry) Integrations.kickSync() }.error
+            "card_reviewed" -> { engine.cards.update(a.getString("id")) { it.put("reviewed", a.getBoolean("reviewed")) }; null }
+            "card_delete" -> { engine.cards.delete(a.getString("id")); null } // same as FlutterBridge deleteCard, but in order
+            "imu_label" -> main { engine.setImuLabel(a.getString("label").takeIf { it != "none" }); null }
             "pause_mic" -> main { if (!engine.isRunning) "no focus block running" else { engine.pauseMic(); null } }
             "resume_mic" -> main { if (!engine.isRunning) "no focus block running" else { engine.resumeMic(); null } }
             "set_config" -> main { engine.updateConfig(RemoteProto.configPatch(a)); null }
@@ -379,7 +410,10 @@ class RemoteLink(private val app: Context, private val engine: FocusEngine) : En
                 .put("done", i.optBoolean("done")).put("createdAt", i.optString("createdAt")).put("synced", synced))
         }
         val cards = JSONArray()
-        for (c in todayCards().asReversed().take(10)) {
+        var n = 0
+        for (id in engine.cards.ids().asReversed()) {
+            if (n >= 12) break
+            val c = engine.cards.read(id)?.takeIf { it.optString("status") == "done" } ?: continue
             val info = c.optJSONObject("card") ?: JSONObject()
             val st = c.optJSONArray("steps")
             val last = st?.let { if (it.length() > 0) it.getJSONObject(it.length() - 1).optString("text") else null } ?: continue
@@ -391,12 +425,17 @@ class RemoteLink(private val app: Context, private val engine: FocusEngine) : En
                 steps.put(JSONObject().put("text", RemoteProto.clip(qs.optString(k), 160)).put("done", qd?.optBoolean(k) ?: false))
             }
             val at = c.optString("createdAt")
+            n++
             cards.put(JSONObject().put("id", c.optString("id"))
                 .put("title", RemoteProto.clip(info.optString("title").ifBlank { last }, 80))
                 .put("step", RemoteProto.clip(last, 200))
                 .put("situation", RemoteProto.clip(info.optString("situation"), 120))
+                .put("day", at.take(10))
                 .put("at", if (at.length >= 16) at.substring(11, 16) else "")
                 .put("correction", RemoteProto.clip(info.optString("correction"), 200))
+                .put("summary", RemoteProto.clip(info.optString("summary"), 300))
+                .put("formula", RemoteProto.clip(c.optString("formula"), 300))
+                .put("reviewed", c.optBoolean("reviewed"))
                 .put("steps", steps))
         }
         dataDirty = false; dataAt = t
@@ -412,20 +451,27 @@ class RemoteLink(private val app: Context, private val engine: FocusEngine) : En
         val gl = st["glasses"] as Map<*, *>
         val cfg = st["config"] as Map<*, *>
         val (inbox, cards) = data()
+        val quest = focus["quest"] as? Map<*, *>
         val review = obj("status" to reviewStatus, "error" to reviewError)
             .put("cards", JSONArray().also { a -> reviewCards.forEach { a.put(obj("q" to it.first, "a" to it.second)) } })
         val o = obj(
-            "v" to 1,
+            "v" to 2,
             "focus" to obj(
                 "running" to focus["running"], "mode" to focus["mode"], "goal" to RemoteProto.clip(focus["goal"] as? String, 200),
                 "startedAt" to focus["startedAt"], "hintCount" to focus["hintCount"], "micPaused" to focus["micPaused"],
                 "phase" to hint["phase"], "lastHint" to (hint["lastText"] as? String)?.let { RemoteProto.clip(it, 300) },
-                "audioSource" to focus["audioSource"],
+                "audioSource" to focus["audioSource"], "attention" to focus["attention"],
+                "quest" to quest?.let { q ->
+                    obj("title" to RemoteProto.clip(q["title"] as? String, 80), "index" to q["index"])
+                        .put("steps", JSONArray().also { a -> (q["steps"] as? List<*>)?.take(8)?.forEach { a.put(RemoteProto.clip(it as? String, 160)) } })
+                },
             ),
             "glasses" to obj("connected" to gl["connected"], "name" to gl["name"], "battery" to gl["battery"], "displayActive" to gl["hasDisplay"]),
-            "config" to obj("mode" to cfg["mode"], "nudges" to cfg["nudges"], "wakeWord" to cfg["wakeWord"],
-                "readAloud" to cfg["readAloud"], "language" to cfg["language"]),
+            "config" to obj(*listOf("mode", "language", "bufferSec", "hudTimeoutSec", "keepAudio", "audioSource", "nudges", "wakeWord",
+                "readAloud", "dozeSound", "collect", "retentionDays").map { it to cfg[it] }.toTypedArray()),
             "inbox" to inbox, "cards" to cards, "review" to review,
+            "imu" to obj("collect" to cfg["collect"], "label" to focus["imuLabel"]),
+            "integrations" to obj("todoist" to Integrations.todoistConfigured),
         )
         o.put("hud", hudJson())
         val state = RemoteProto.trimState(o, RemoteProto.MAX_STATE_BYTES - 4_096)

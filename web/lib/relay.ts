@@ -109,6 +109,8 @@ function only(spec: Record<string, (v: unknown) => unknown | undefined>, require
   };
 }
 const isMode = (v: unknown) => (typeof v === 'string' && MODES.includes(v) ? v : undefined);
+const oneOf = <T>(...xs: T[]) => (v: unknown) => (xs.includes(v as T) ? v : undefined);
+const ACTS = ['board', 'notes', 'switching', 'still', 'looking_around', 'nod', 'walking', 'none'];
 const isBool = (v: unknown) => (typeof v === 'boolean' ? v : undefined);
 const isItem = (v: unknown) => (typeof v === 'string' && ITEM_RE.test(v) ? v : undefined);
 const isGoal = (v: unknown) => (typeof v === 'string' && v.length <= 1000 ? clean(v, 200) : undefined);
@@ -117,10 +119,19 @@ const isNote = (v: unknown) => (typeof v === 'string' && v.length <= 2000 && cle
 export const COMMANDS: Record<string, Validator> = {
   start_focus: only({ mode: isMode, goal: isGoal }),
   stop_focus: only({}), help: only({}), pause_mic: only({}), resume_mic: only({}),
-  review_load: only({}), refresh: only({}),
-  set_config: only({ mode: isMode, nudges: isBool, wakeWord: isBool, readAloud: isBool }),
+  review_load: only({}), refresh: only({}), next: only({}), reconnect: only({}), inbox_sync: only({}),
+  set_config: only({
+    mode: isMode, nudges: isBool, wakeWord: isBool, readAloud: isBool, dozeSound: isBool, collect: isBool,
+    language: oneOf('en', 'cs', 'sk', 'de', 'pl'), bufferSec: oneOf(60, 120, 150), hudTimeoutSec: oneOf(0, 10, 20, 40),
+    keepAudio: oneOf('none', 'last60', 'all'), audioSource: oneOf('auto', 'phone', 'glasses'), retentionDays: oneOf(0, 7, 30),
+  }),
   inbox_done: only({ id: isItem, done: isBool }, ['id', 'done']),
   inbox_delete: only({ id: isItem }, ['id']),
+  card_reviewed: only({ id: isItem, reviewed: isBool }, ['id', 'reviewed']),
+  card_delete: only({ id: isItem }, ['id']),
+  imu_label: only({ label: oneOf(...ACTS) }, ['label']),
+  // The web app is visible on the glasses (sent every ~20 s and on hide); the phone shows proactive UI via DAT otherwise.
+  web_seen: only({ visible: isBool }, ['visible']),
   // v2: the web app owns the display, so glasses input (arrows/Enter/back) is forwarded to FocusEngine.
   gesture: only({ g: (v) => (typeof v === 'string' && GESTURES.includes(v) ? v : undefined) }, ['g']),
   // v2: Meta AI connector tools (lib/mcp.ts); the phone answers them via POST res.

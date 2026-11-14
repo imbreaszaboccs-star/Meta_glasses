@@ -359,7 +359,7 @@ class FocusEngine(private val app: Context) {
         startMic()
         attachGlasses()
         speaker.warmUp()
-        tickJob = scope.launch { while (isActive) { delay(1_000); nudgeTick(); emitStatus() } }
+        tickJob = scope.launch { while (isActive) { delay(1_000); nudgeTick(); displayTick(); emitStatus() } }
         log("focus", "started ${r.mode}")
         emitStatus()
         return null
@@ -1305,8 +1305,51 @@ class FocusEngine(private val app: Context) {
 
     private fun showHud(screen: HudScreen) {
         currentScreen = screen
-        if (config.hudSource == "dat") glasses?.show(Hud.render(screen))
+        if (config.hudSource == "dat") glasses?.show(Hud.render(screen)) else syncOnDemand(screen)
         listeners.forEach { it.onHud() }
+    }
+
+    // -- on-demand DAT display (hudSource "web"): the web app cannot wake itself, DAT can surface UI --
+    private val web = WebVisibility(clock)
+    private var releaseJob: Job? = null
+
+    /** `web_seen` from the glasses web app (not logged). Visible = it draws everything, so DAT lets go at once. */
+    fun onWebSeen(visible: Boolean) {
+        web.seen(visible)
+        if (config.hudSource != "web") return
+        if (visible) glasses?.let(::releaseOnDemand)
+        else currentScreen?.takeIf { run != null && it !is HudScreen.Idle }?.let(::syncOnDemand)
+    }
+
+    /** Idle with the web app hidden: release shortly. Anything else while it is hidden: attach and draw there. */
+    private fun syncOnDemand(screen: HudScreen) {
+        val g = glasses ?: return
+        if (!displayCapable || config.hudSource != "web") return
+        if (web.visible) return releaseOnDemand(g)
+        if (screen is HudScreen.Idle) {
+            if (g.hasDisplay && releaseJob?.isActive != true) releaseJob = scope.launch {
+                delay(RELEASE_DELAY_MS)
+                if (currentScreen is HudScreen.Idle) releaseOnDemand(g)
+            }
+            return
+        }
+        releaseJob?.cancel()
+        if (!g.hasDisplay) { log("display", "on-demand attach"); g.ensureDisplay() }
+        g.show(Hud.render(screen)) // no-op until the display is STARTED; onDisplayReady re-renders then
+    }
+
+    private fun releaseOnDemand(g: GlassesSession) {
+        releaseJob?.cancel()
+        if (g.hasDisplay) { log("display", "on-demand release"); g.releaseDisplay() }
+    }
+
+    /** Every second: the web app went silent (hidden) while something is on the HUD, or turned visible while DAT is up. */
+    private fun displayTick() {
+        val g = glasses ?: return
+        if (config.hudSource != "web" || !displayCapable) return
+        val s = currentScreen ?: return
+        if (web.visible) { if (g.hasDisplay) releaseOnDemand(g) }
+        else if (s !is HudScreen.Idle && !g.hasDisplay) syncOnDemand(s)
     }
 
     private fun rerender() {
@@ -1413,6 +1456,9 @@ class FocusEngine(private val app: Context) {
                 "micPaused" to micPaused,
                 "phoneOnly" to (r != null && g == null),
                 "audioSource" to (if (r != null) audio else "none"),
+                "attention" to (if (r != null) machine.state.name else null),
+                "quest" to quest?.takeIf { !it.finished }?.let { mapOf("title" to it.title, "steps" to it.steps, "index" to it.index) },
+                "imuLabel" to recorder?.currentLabel(),
             ),
             "remote" to remoteStatus(),
             "mic" to mapOf(
@@ -1442,6 +1488,7 @@ class FocusEngine(private val app: Context) {
     companion object {
         private const val TAG = "FocusLens"
         private const val DEBOUNCE_MS = 1_500L
+        private const val RELEASE_DELAY_MS = 2_000L
         private const val HISTORY = 5
         private const val RECENT = 6
         private const val PANEL_TIMEOUT_MS = 20_000L

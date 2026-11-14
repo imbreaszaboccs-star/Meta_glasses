@@ -20,6 +20,7 @@ import com.meta.wearable.dat.core.types.DeviceIdentifier
 import com.meta.wearable.dat.core.types.DeviceSessionError
 import com.meta.wearable.dat.display.Display
 import com.meta.wearable.dat.display.addDisplay
+import com.meta.wearable.dat.display.removeDisplay
 import com.meta.wearable.dat.display.types.DisplayState
 import com.meta.wearable.dat.display.views.ContentScope
 import com.meta.wearable.dat.inputs.Inputs
@@ -89,6 +90,9 @@ class GlassesSession(
     private var session: DeviceSession? = null
     private var inputs: Inputs? = null
     private var display: Display? = null
+    private var displayStarted = false
+    private var displayJob: Job? = null
+    private var started = false // DeviceSessionState.STARTED seen: capabilities may be added
     private var camera: Camera? = null
     private var motion: Motion? = null
     private var speech: Speech? = null
@@ -162,6 +166,7 @@ class GlassesSession(
     }
 
     private fun onStarted(s: DeviceSession) {
+        started = true
         if (inputs == null) attachInputs(s)
         scope.launch {
             if (wantCamera && camera == null && display == null) openCamera(s)
@@ -373,12 +378,12 @@ class GlassesSession(
         s.addDisplay().fold(
             onSuccess = { d ->
                 display = d
-                jobs += scope.launch {
+                displayJob = scope.launch {
                     d.state.collect { st ->
                         log("display", "$st")
                         when (st) {
-                            DisplayState.STARTED -> { publish(); onDisplayReady() }
-                            DisplayState.STOPPED, DisplayState.CLOSED -> if (display === d) { display = null; publish() }
+                            DisplayState.STARTED -> { displayStarted = true; publish(); onDisplayReady() }
+                            DisplayState.STOPPED, DisplayState.CLOSED -> if (display === d) { display = null; displayStarted = false; publish() }
                             else -> Unit
                         }
                     }
@@ -388,9 +393,26 @@ class GlassesSession(
         )
     }
 
-    /** Replaces the whole HUD screen. No-op without a display. */
+    /** On demand: attaches the DAT display (idempotent, main thread). [onDisplayReady] fires when it is up. */
+    fun ensureDisplay() {
+        val s = session ?: return
+        if (!started || display != null) return
+        attachDisplay(s)
+    }
+
+    /** Gives the glasses back to the web app (idempotent, main thread). */
+    fun releaseDisplay() {
+        val s = session ?: return
+        if (display == null) return
+        displayJob?.cancel(); displayJob = null
+        display = null; displayStarted = false
+        s.removeDisplay().onFailure { e, _ -> log("error", "removeDisplay: ${e.description}") }
+        publish()
+    }
+
+    /** Replaces the whole HUD screen. No-op until the display reports STARTED. */
     fun show(content: ContentScope.() -> Unit) {
-        val d = display ?: return
+        val d = display?.takeIf { displayStarted } ?: return
         scope.launch(Dispatchers.IO) {
             d.sendContent(content).onFailure { e, _ -> log("error", "sendContent: ${e.description}") }
         }
@@ -404,6 +426,7 @@ class GlassesSession(
     }
 
     private fun clear() {
+        displayJob?.cancel(); displayJob = null; displayStarted = false; started = false
         jobs.forEach { it.cancel() }
         jobs.clear()
         inputs = null

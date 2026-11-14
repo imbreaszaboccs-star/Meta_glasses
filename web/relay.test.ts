@@ -119,6 +119,8 @@ describe('relay', () => {
     { type: 'inbox_done', args: { id: '../x', done: true } }, { type: 'inbox_done', args: { id: 'abc' } },
     { type: 'set_config', args: { nudges: 'yes please' } }, { type: 'help', args: [1] }, { type: 'gesture', args: { g: 'jump' } },
     { type: 'gesture' },
+    { type: 'set_config', args: { bufferSec: 999 } }, { type: 'set_config', args: { language: 'xx' } },
+    { type: 'imu_label', args: { label: 'dance' } }, { type: 'card_delete', args: { id: '../../x' } }, { type: 'web_seen', args: {} },
   ])('command whitelist rejects %j', async (cmd) => {
     const e = env();
     const { p, t } = await e.pairedWeb();

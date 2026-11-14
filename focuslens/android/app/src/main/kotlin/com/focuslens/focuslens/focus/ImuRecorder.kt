@@ -44,6 +44,8 @@ class ImuRecorder(dir: File, private val clock: () -> Long) {
         ev.write("${clock()},$name\n"); ev.flush()
     }
 
+    fun currentLabel(): String? = label.ifEmpty { null }
+
     @Synchronized
     fun setLabel(l: String?) {
         label = l.orEmpty()
