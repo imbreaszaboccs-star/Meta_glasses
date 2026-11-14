@@ -47,6 +47,5 @@ For people with ADHD, this is not a "convenience feature", but a compensatory ai
 "
 
 
-
 - jak glasses tak wrist band mají akcelerometry a gyroskop 
 - detekce jestli třeba přestal psat 
