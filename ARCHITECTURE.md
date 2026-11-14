@@ -19,8 +19,8 @@ Produktová idea je v [idea.md](idea.md), práce s Meta SDK v [META_WEARABLES_SE
 │ META RAY-BAN DISPLAY│  BT    │ TELEFON – Flutter app „FocusLens“            │ HTTPS  │ BACKEND (1 endpoint)     │
 │                     │◄──────►│                                              │◄──────►│                          │
 │ • InputEvent ───────┼──event─┼─► TriggerService                             │        │ POST /hint               │
-│ • kamera (spí) ◄────┼─photo──┼── GlassesBridge (Kotlin/Swift ↔ DAT 1.0.x)   │        │  1. STT (180 s → text)   │
-│ • HUD 600×600 ◄─────┼─text───┼── OutputService ─┬─ HUD (Display)            │        │  2. Claude (foto + text) │
+│ • kamera (spí) ◄────┼─photo──┼── GlassesBridge (Kotlin/Swift ↔ DAT 1.0.x)   │        │  Gemini 3.5 Flash-Lite   │
+│ • HUD 600×600 ◄─────┼─text───┼── OutputService ─┬─ HUD (Display)            │        │  (foto + audio, 1 call)  │
 │ • repro (A2DP) ◄────┼─audio──┼──────────────────┴─ TTS (ostatní brýle)      │        │  3. JSON {next_step,card}│
 │                     │        │                                              │        │                          │
 │                     │        │ AudioRingBuffer 180 s (RAM, foreground svc)  │        │ API klíče jen tady       │
@@ -36,7 +36,7 @@ Produktová idea je v [idea.md](idea.md), práce s Meta SDK v [META_WEARABLES_SE
 | `HintPipeline` | Dart | foto + audio paralelně → backend → výstup + karta |
 | `OutputService` | Dart | HUD, pokud jsou brýle Display, jinak TTS přes A2DP |
 | `CardStore` | Dart | ukládá karty na disk, seznam pro večerní review |
-| Backend `/hint` | serverless funkce | STT + Claude, drží API klíče |
+| Backend `/hint`, `/tts` | FastAPI na VPS `lens.projectviridis.dev` ([backend/](backend/README.md)) | Gemini (foto + audio v jednom volání), drží API klíče |
 
 ---
 
@@ -48,7 +48,7 @@ t=0      pinch na Neural Band ──► InputEvent.Select ──► TriggerServi
          ├─► AudioRingBuffer.snapshot()        (≈ 0 ms, kopie 5,76 MB)
          └─► GlassesBridge.capturePhoto()      (start session + foto, ⚠️ změřit)
 t≈1 s    HintPipeline: POST /hint  (multipart: photo.jpg + audio.wav + meta)
-         backend: STT(audio) ─► Claude(photo, transcript) ─► {next_step, card}
+         backend: Gemini(photo + audio, 1 volání) ─► {next_step, card}
 t≈3–4 s  OutputService.show(next_step)  → HUD / TTS
          CardStore.save(photo, audio, card)   (na pozadí)
 ```
@@ -210,14 +210,14 @@ Velké tlačítko v aplikaci na telefonu, Bluetooth media tlačítko a tlačítk
 
 ## 6. Backend `/hint`
 
-Jeden endpoint, serverless (Cloud Run / Cloudflare Worker / Vercel…). Proč backend a ne volat AI přímo z appky: **API klíč nesmí být v aplikaci** (dá se z APK vytáhnout).
+FastAPI v Dockeru na VPS `https://lens.projectviridis.dev` (za Cloudflare), kód a nasazení v [backend/](backend/README.md). Výběr modelů: [GOOGLE_MODELS.md](GOOGLE_MODELS.md). Proč backend a ne volat AI přímo z appky: **API klíč nesmí být v aplikaci** (dá se z APK vytáhnout).
 
 ### Kontrakt
 ```
 POST /hint   (multipart/form-data, Authorization: Bearer <app token>)
   photo:  image/jpeg            (volitelné)
   audio:  audio/wav             (180 s, 16 kHz mono)
-  meta:   {"locale":"cs","mode":"lecture|homework|desk","ts":"…"}
+  meta:   {"locale":"cs","mode":"lecture|homework|desk","ts":"…","previous":["…"]}   # previous = swipe vpravo „a co dál?“
 
 200 OK
 {
@@ -232,17 +232,17 @@ POST /hint   (multipart/form-data, Authorization: Bearer <app token>)
 ```
 
 ### Kroky na backendu
-1. **STT**: přepis 180 s audia s časovými značkami. Claude audio vstup nebere, takže je potřeba samostatná STT služba (Whisper / Deepgram / Google STT, rozhodnout podle ceny, latence a češtiny).
-2. **Claude**: jeden request (foto + přepis), **structured output** (`output_config.format` s JSON schema `{next_step, card}`).
-   - Model: `claude-opus-5-5` s `output_config.effort: "low"` (rychlost, jednoduchý úkol). Pokud bude latence problém, je k dispozici i levnější a rychlejší `claude-haiku-5-5`, ale to je produktové rozhodnutí, ne default.
-   - Zapnuté server-side **fallbacks** (`betas: ["server-side-fallback-2026-07-01"]`, `fallbacks: "default"`), aby odmítnutí klasifikátorem neskončilo prázdnou odpovědí.
-   - Vždy kontrolovat `stop_reason` před čtením obsahu.
-3. Vrátit JSON. Nic neukládat (stateless), karta žije jen v telefonu.
+1. **Jedno volání Gemini**: foto + audio rovnou, bez samostatného STT (Gemini slyší audio nativně, 180 s = 5 760 tokenů). **Structured output** (JSON schema `{next_step, card}`).
+   - Model: `gemini-3.5-flash-lite`, `thinking_level: minimal` (nejnižší latence, ≈ $0,003 za nápovědu). Při slabé kvalitě přepnout v `.env` na `gemini-3.8-flash` + `low`.
+   - Fallback: při chybě/přetížení jeden pokus s `gemini-3.1-flash-lite` (jiný model), pak `502`, telefon uloží kartu jako `pending`.
+   - Prázdná odpověď (blokace, `finish_reason`) je chyba, nikdy se nevrací prázdný `next_step`.
+2. Vrátit JSON. Nic neukládat (stateless), karta žije jen v telefonu.
+3. `POST /tts` (`gemini-3.8-flash-lite-tts`, čeština, WAV 24 kHz) pro brýle bez displeje. `flutter_tts` zůstává jako offline fallback.
 
 ### Jádro promptu (system)
 ```
 Jsi exekutivní kopilot pro člověka s ADHD. Dostaneš fotku toho, na co se právě dívá,
-a přepis posledních 180 s zvuku (nejdůležitějších je posledních ~60 s).
+a audio posledních 180 s (nejdůležitějších je posledních ~60 s).
 Vrať JEDEN konkrétní další krok: max. 20 slov, rozkazovací způsob, žádný úvod.
 Neprozrazuj celé řešení, jen nejbližší krok. Pokud je na fotce chyba, pojmenuj
 přesně kde. Pokud uživatel „vypadl“ z výkladu, řekni, co si má zapsat / co právě zaznělo.
@@ -296,7 +296,7 @@ focuslens/
   ios/Runner/GlassesPlugin.swift                    # DAT iOS
   test/ring_buffer_test.dart
 backend/
-  hint.(py|ts)                    # jeden soubor, jeden endpoint
+  app.py, ai.py                   # FastAPI (/hint, /tts, /health) + volání Gemini
 ```
 
 Závislosti (Flutter): `record`, `flutter_foreground_task`, `flutter_tts`, `http`, `path_provider`, `just_audio` (přehrání karty). Nic dalšího, dokud to není potřeba.
@@ -324,7 +324,7 @@ Závislosti (Flutter): `record`, `flutter_foreground_task`, `flutter_tts`, `http
 | 4 | Background mikrofon (zvlášť iOS) | buffer přestane běžet | foreground service / audio background mode. Test s uzamčeným telefonem 60 min |
 | 5 | DAT preview: max 100 testerů, nelze publikovat | žádný veřejný release | pro hackathon / pilot OK. Sledovat changelog |
 | 6 | Upload 5,5 MB na slabé síti | latence | změřit. Komprese (§3.4) |
-| 7 | Kvalita STT v češtině z kapsy | špatná nápověda | porovnat 2 STT služby na nahrávce z reálné přednášky |
+| 7 | Porozumění češtině z kapsy | špatná nápověda | `backend/smoke.py` na nahrávce z reálné přednášky; případně `HINT_MODEL=gemini-3.8-flash` |
 
 ---
 

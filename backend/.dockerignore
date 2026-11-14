@@ -1,0 +1,7 @@
+.env
+.venv
+__pycache__
+*.wav
+*.jpg
+test_app.py
+smoke.py

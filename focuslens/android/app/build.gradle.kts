@@ -6,6 +6,18 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+/** android/local.properties (gitignored): SDK paths + Meta DAT ids + backend URL/token. */
+val localProps = Properties().apply {
+    rootProject.file("local.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) }
+}
+
+/** android/key.properties (gitignored): release signing. Falls back to debug signing when missing. */
+val keyProps = Properties().apply {
+    rootProject.file("key.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) }
+}
+
+fun quoted(s: String) = "\"" + s.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
+
 android {
     namespace = "com.focuslens.focuslens"
     compileSdk = flutter.compileSdkVersion
@@ -16,29 +28,44 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
+    buildFeatures {
+        buildConfig = true
+    }
+
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
         applicationId = "com.focuslens.focuslens"
-        // You can update the following values to match your application needs.
-        // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = 31 // jako Meta DAT sample appky
+        minSdk = 31 // same as the Meta DAT sample apps
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
 
-        // Meta Wearables DAT: "0" = Developer Mode. Produkčně hodnoty z Wearables Developer Center do local.properties.
-        val localProps = Properties().apply {
-            rootProject.file("local.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) }
-        }
+        // Meta Wearables DAT: "0" = Developer Mode. For a release channel put the real values from
+        // Wearables Developer Center into local.properties (mwdat_application_id / mwdat_client_token).
         manifestPlaceholders["mwdat_application_id"] = localProps.getProperty("mwdat_application_id", "0")
         manifestPlaceholders["mwdat_client_token"] = localProps.getProperty("mwdat_client_token", "0")
+
+        // Backend (backend/README.md). The token is the shared APP_TOKEN from backend/.env.
+        buildConfigField("String", "API_URL", quoted(localProps.getProperty("focuslens.api_url", "https://lens.projectviridis.dev")))
+        buildConfigField("String", "API_TOKEN", quoted(localProps.getProperty("focuslens.api_token", "")))
+    }
+
+    signingConfigs {
+        if (keyProps.getProperty("storeFile") != null) {
+            create("release") {
+                storeFile = file(keyProps.getProperty("storeFile"))
+                storePassword = keyProps.getProperty("storePassword")
+                keyAlias = keyProps.getProperty("keyAlias")
+                keyPassword = keyProps.getProperty("keyPassword")
+            }
+        }
     }
 
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
+            // R8 stays off until keep rules for the Meta DAT SDK are verified on a device.
+            isMinifyEnabled = false
+            isShrinkResources = false
         }
     }
 }
@@ -60,4 +87,8 @@ dependencies {
     implementation("com.meta.wearable:mwdat-display:$mwdat")
     implementation("com.meta.wearable:mwdat-inputs:$mwdat")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
+    implementation("androidx.core:core-ktx:1.16.0")
+    implementation("androidx.work:work-runtime-ktx:2.10.1")
+
+    testImplementation("junit:junit:4.13.2")
 }

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="paper">#F3EFE6</color>
+    <color name="paper_dark">#161917</color>
+    <color name="board">#2E4A3B</color>
+    <color name="marker">#E9C46A</color>
+    <color name="chalk">#F3EFE6</color>
+</resources>
