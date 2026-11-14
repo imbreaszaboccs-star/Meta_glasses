@@ -8,7 +8,7 @@ People with ADHD, dyslexia, or overwhelmed students struggle with three main obs
 2. **Short-term working memo dfdfry failure:** Forgetting what was just explained on the board 30 seconds ago.
 3. **Executive paralysis (Task Paralysis):** The inability to start or continue a task when stuck, or even when forced to configure an app before starting.
 
-Current tools and AI assistants require a person to pick up their phone. However, for an ADHD brain, unlocking the phone screen is a trap—they are immediately consumed by notifications, context-switching occurs, and returning to the original work takes an average of over 20 minutes. Even worse, apps that ask the user to choose modes (*Lecture / Homework / Desk*) or type out goals before starting create immediate decision friction.
+Current tools and AI assistants require a personels to pick up their phone. However, for an ADHD brain, unlocking the phone screen is a trap—they are immediately consumed by notifications, context-switching occurs, and returning to the original work takes an average of over 20 minutes. Even worse, apps that ask the user to choose modes (*Lecture / Homework / Desk*) or type out goals before starting create immediate decision friction.
 
 
 
