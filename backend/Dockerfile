@@ -1,14 +1,18 @@
 FROM python:3.13-slim
 
-ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+# MPLCONFIGDIR: matplotlib needs a writable cache dir; the app user has no home.
+# FOCUSLENS_DATA_DIR: pairing store (SQLite, hashes only) on a volume, see compose.yaml.
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 MPLBACKEND=Agg MPLCONFIGDIR=/tmp/matplotlib \
+    FOCUSLENS_DATA_DIR=/data
 WORKDIR /app
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY ai.py app.py ./
+COPY ai.py app.py formula.py remote.py ./
+COPY glasses/ ./glasses/
 
-RUN useradd -r -u 10001 app
+RUN useradd -r -u 10001 app && mkdir -p /data && chown app /data
 USER app
 
 EXPOSE 8000

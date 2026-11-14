@@ -6,9 +6,10 @@ import '../app_scope.dart';
 import '../theme/tokens.dart';
 import 'cards/cards_screen.dart';
 import 'focus/focus_screen.dart';
+import 'inbox/inbox_screen.dart';
 import 'settings/settings_screen.dart';
 
-/// Three places, no deeper: Focus · Cards · Settings.
+/// Four places, no deeper: Focus · Cards · Inbox · Settings.
 class HomeShell extends StatefulWidget {
   const HomeShell({super.key});
 
@@ -85,6 +86,7 @@ class _HomeShellState extends State<HomeShell> {
       body: IndexedStack(index: _tab, children: [
         FocusScreen(onOpenCards: () => _go(1)),
         const CardsScreen(),
+        const InboxScreen(),
         const SettingsScreen(),
       ]),
       bottomNavigationBar: Column(mainAxisSize: MainAxisSize.min, children: [
@@ -92,10 +94,21 @@ class _HomeShellState extends State<HomeShell> {
         NavigationBar(
           selectedIndex: _tab,
           onDestinationSelected: _go,
-          destinations: const [
-            NavigationDestination(icon: Icon(Icons.adjust_rounded), label: 'Focus'),
-            NavigationDestination(icon: Icon(Icons.view_agenda_outlined), selectedIcon: Icon(Icons.view_agenda_rounded), label: 'Cards'),
-            NavigationDestination(icon: Icon(Icons.tune_rounded), label: 'Settings'),
+          destinations: [
+            const NavigationDestination(icon: Icon(Icons.adjust_rounded), label: 'Focus'),
+            const NavigationDestination(icon: Icon(Icons.view_agenda_outlined), selectedIcon: Icon(Icons.view_agenda_rounded), label: 'Cards'),
+            NavigationDestination(
+              icon: ListenableBuilder(
+                listenable: context.app.inbox,
+                builder: (context, _) => Badge(
+                  isLabelVisible: context.app.inbox.openCount > 0,
+                  label: Text('${context.app.inbox.openCount}'),
+                  child: const Icon(Icons.inbox_outlined),
+                ),
+              ),
+              label: 'Inbox',
+            ),
+            const NavigationDestination(icon: Icon(Icons.tune_rounded), label: 'Settings'),
           ],
         ),
       ]),

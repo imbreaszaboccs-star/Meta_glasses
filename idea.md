@@ -45,3 +45,7 @@ For people with ADHD, this is not a "convenience feature", but a compensatory ai
 10. Reducing Shame and Social Barrier:
 11. Students with ADHD or dyslexia are often ashamed to raise their hand and ask the teacher: „Excuse me, I didn't catch the last minute, how did you get to this line?“ FocusLens gives them silent, discrete support right in their field of view, thereby increasing their self-confidence and independence.
 "
+
+
+- jak glasses tak wrist band mají akcelerometry a gyroskop 
+- detekce jestli třeba přestal psat 

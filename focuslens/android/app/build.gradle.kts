@@ -86,9 +86,17 @@ dependencies {
     implementation("com.meta.wearable:mwdat-camera:$mwdat")
     implementation("com.meta.wearable:mwdat-display:$mwdat")
     implementation("com.meta.wearable:mwdat-inputs:$mwdat")
+    implementation("com.meta.wearable:mwdat-motion:$mwdat")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
     implementation("androidx.core:core-ktx:1.16.0")
     implementation("androidx.work:work-runtime-ktx:2.10.1")
+    // Todoist/Notion tokens, encrypted on the phone.
+    implementation("androidx.security:security-crypto:1.1.0")
+    // Wake word "hey lens", offline. Model: tool/get_wake_model.ps1
+    implementation("com.alphacephei:vosk-android:0.3.47@aar")
+    implementation("net.java.dev.jna:jna:5.13.0@aar")
 
     testImplementation("junit:junit:4.13.2")
+    // android.jar's org.json is a stub on the JVM; tests of JSON code need the real one.
+    testImplementation("org.json:json:20240303")
 }

@@ -21,10 +21,11 @@ GlassesLine glassesLine(FocusStatus s) {
   if (!s.registered) {
     return GlassesLine('not linked to Meta AI', problem: true, fixLabel: 'Link', fix: (c) => c.app.focus.register());
   }
-  if (!s.glassesConnected) {
-    return GlassesLine(s.glassesKnown ? 'not connected' : 'none paired',
-        problem: true, fixLabel: 'Open Meta AI', fix: (c) => c.app.focus.openMetaAi());
+  if (!s.glassesKnown) {
+    return GlassesLine('none paired', problem: true, fixLabel: 'Open Meta AI', fix: (c) => c.app.focus.openMetaAi());
   }
+  // Paired but the DAT link idles (e.g. after a session): a session can still be opened.
+  if (!s.glassesConnected) return GlassesLine('${s.glassesName ?? 'Glasses'} · standby');
   if (s.updateRequired || s.compatibilityIssue) {
     return GlassesLine('needs an update', problem: true, fixLabel: 'Update', fix: (c) => c.app.focus.openGlassesUpdate());
   }
@@ -42,7 +43,7 @@ GlassesLine glassesLine(FocusStatus s) {
 }
 
 /// Asks for whatever is still missing, then starts the block. Works without glasses (phone only).
-Future<void> startFocusFlow(BuildContext context) async {
+Future<void> startFocusFlow(BuildContext context, {String goal = ''}) async {
   final app = context.app;
   var s = app.focus.status.value;
   if (!s.micPermission || !s.notificationPermission) {
@@ -53,7 +54,7 @@ Future<void> startFocusFlow(BuildContext context) async {
   if (s.registered && s.glassesConnected && s.cameraPermission != 'granted') {
     await app.focus.requestGlassesCamera();
   }
-  await app.focus.startFocus(app.settings.toConfig());
+  await app.focus.startFocus({...app.settings.toConfig(), 'goal': goal.trim()});
   await app.focus.refresh();
   if (!context.mounted) return;
   final after = app.focus.status.value;

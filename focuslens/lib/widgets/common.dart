@@ -184,15 +184,16 @@ String elapsed(Duration d) {
   return h > 0 ? '$h:${two(m)}:${two(s)}' : '${two(m)}:${two(s)}';
 }
 
-const modeNames = {'lecture': 'Lecture', 'homework': 'Homework', 'desk': 'Desk'};
+const modeNames = {'auto': 'Auto', 'lecture': 'Lecture', 'homework': 'Homework', 'desk': 'Desk'};
 
 const modeHelp = {
+  'auto': 'Figures out by itself whether you are in a lecture, doing homework or stuck at your desk.',
   'lecture': 'Tells you what was just said and what to write down.',
   'homework': 'Finds the first mistake in your work, or the next small step.',
   'desk': 'Picks the smallest first thing to do when you can\'t get started.',
 };
 
-/// Lecture / Homework / Desk picker.
+/// Auto / Lecture / Homework / Desk picker.
 class ModePicker extends StatelessWidget {
   const ModePicker({super.key, required this.value, required this.onChanged});
   final String value;
@@ -209,6 +210,14 @@ class ModePicker extends StatelessWidget {
         ),
       );
 }
+
+const situationNames = {
+  'lecture': 'Lecture',
+  'homework': 'Homework',
+  'desk': 'Desk',
+  'reading': 'Reading',
+  'other': 'Other',
+};
 
 const hintLanguages = [
   ('en', 'English'),

@@ -30,6 +30,7 @@ class _FocusLensAppState extends State<FocusLensApp> with WidgetsBindingObserver
     if (state == AppLifecycleState.resumed) {
       // Cards may have been written (or filled by the retry worker) while we were away.
       context.app.cards.reloadSoon();
+      context.app.inbox.reload();
       context.app.focus.refresh();
     }
   }

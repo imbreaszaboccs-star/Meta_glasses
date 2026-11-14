@@ -20,3 +20,17 @@ Aktuálně **Gesture Lab**: loguje všechny události z Meta Ray-Ban Display + N
 | HUD vyp | gesta bez display session |
 
 `addInputs: PERMISSION_DENIED` = Inputs není povolené pro appku ve Wearables Developer Center (experimentální capability).
+
+## Hlasové spuštění
+
+"Hey Meta, start FocusLens" vyžaduje schválení **Voice Invocations** a nastavené mluvené jméno appky ve Wearables Developer Center; experimentální, jen dev/beta.
+
+## Wake word "hey lens"
+
+Offline na telefonu (Vosk, Apache-2.0), poslouchá stejné mikrofonní PCM jako buffer. Model (~40 MB) není v gitu, stáhni ho jednou:
+
+```
+powershell -File tool\get_wake_model.ps1
+```
+
+Bez modelu appka jen jednou zaloguje `wake word off` a běží dál bez wake wordu. Zapnutí/vypnutí: Nastavení → Wake word "hey lens".

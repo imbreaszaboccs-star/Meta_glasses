@@ -5,6 +5,9 @@ import android.graphics.BitmapFactory
 import android.os.SystemClock
 import com.meta.wearable.dat.camera.Camera
 import com.meta.wearable.dat.camera.addCamera
+import com.meta.wearable.dat.camera.types.AudioCodec as DatAudioCodec
+import com.meta.wearable.dat.camera.types.AudioFrame
+import com.meta.wearable.dat.camera.types.AudioSampleRate
 import com.meta.wearable.dat.camera.types.PhotoData
 import com.meta.wearable.dat.camera.types.StreamConfiguration
 import com.meta.wearable.dat.camera.types.StreamState
@@ -24,7 +27,16 @@ import com.meta.wearable.dat.inputs.addInputs
 import com.meta.wearable.dat.inputs.types.InputEvent
 import com.meta.wearable.dat.inputs.types.InputsConfiguration
 import com.meta.wearable.dat.inputs.types.NavDirection
+import com.meta.wearable.dat.motion.Motion
+import com.meta.wearable.dat.motion.addMotion
+import com.meta.wearable.dat.motion.types.MotionConfiguration
+import com.meta.wearable.dat.motion.types.MotionSample
+import com.meta.wearable.dat.motion.types.MotionSamplingRate
+import com.meta.wearable.dat.motion.types.MotionSource
+import com.meta.wearable.dat.motion.types.MotionState
 import java.io.ByteArrayOutputStream
+import kotlin.math.asin
+import kotlin.math.sqrt
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -62,15 +74,22 @@ class GlassesSession(
     private val onDisplayReady: () -> Unit,
     /** The glasses need the DAT app updated (needs an Activity to open Meta AI). */
     private val onUpdateRequired: () -> Unit,
+    /** Head pitch signal: true = looking down (desk/notebook), false = up/ahead, null = no signal (unsupported / paused). Called on change only. */
+    private val onHead: (Boolean?) -> Unit = {},
+    /** Glasses microphone: PCM16 16 kHz mono, any chunk size, on an IO thread. Must not block. */
+    private val onAudio: (ByteArray, Int) -> Unit = { _, _ -> },
 ) {
     private var session: DeviceSession? = null
     private var inputs: Inputs? = null
     private var display: Display? = null
     private var camera: Camera? = null
+    private var motion: Motion? = null
+    private var headDown: Boolean? = null
     private val jobs = mutableListOf<Job>()
 
     private var wantDisplay = true
     private var wantCamera = true
+    private var wantAudio = false
     private var stopRequested = false
     private var endedByDevice = false
     private var lastError: String? = null
@@ -87,15 +106,17 @@ class GlassesSession(
         onState(state)
     }
 
-    fun start(deviceId: DeviceIdentifier, withDisplay: Boolean, withCamera: Boolean) {
+    fun start(deviceId: DeviceIdentifier, withDisplay: Boolean, withCamera: Boolean, withAudio: Boolean = false) {
         if (session != null) return
         wantDisplay = withDisplay
         wantCamera = withCamera
+        audioLogged = false
+        wantAudio = withCamera && withAudio // audio rides the camera stream
         stopRequested = false
         endedByDevice = false
         lastError = null
         publish(GlassesPhase.CONNECTING, null)
-        log("session", "starting on $deviceId (display=$withDisplay camera=$withCamera)")
+        log("session", "starting on $deviceId (display=$withDisplay camera=$withCamera audio=$wantAudio)")
 
         Wearables.createSession(SpecificDeviceSelector(deviceId)).fold(
             onSuccess = { s ->
@@ -136,6 +157,7 @@ class GlassesSession(
         scope.launch {
             if (wantCamera && camera == null && display == null) openCamera(s)
             if (wantDisplay && display == null) attachDisplay(s)
+            if (motion == null) attachMotion(s) // no ordering constraint (BirdSpotter); after camera + display anyway
             publish(GlassesPhase.READY, null)
             // Resuming from PAUSED: the HUD keeps its handle but lost its content.
             if (display != null) onDisplayReady()
@@ -187,11 +209,17 @@ class GlassesSession(
     private suspend fun openCamera(s: DeviceSession): Camera? {
         val cam = s.addCamera(
             // Compressed stream keeps running when the app leaves the foreground (Meta BirdSpotter note).
-            StreamConfiguration(videoQuality = VideoQuality.LOW, frameRate = 7, compressVideo = true),
+            // Experimental camera audio (glasses mic): decided here, when the camera is added.
+            StreamConfiguration(
+                audioCodec = if (wantAudio) DatAudioCodec.PCM(AudioSampleRate.RATE_16000, 1) else null,
+                videoQuality = VideoQuality.LOW, frameRate = 7, compressVideo = true,
+            ),
         ).fold(
             onSuccess = { it },
             onFailure = { e, _ -> log("error", "addCamera: ${e.description}"); null },
         ) ?: return null
+        // The audio collector must be running before start().
+        if (wantAudio) jobs += scope.launch(Dispatchers.IO) { cam.stream.audioStream.collect(::onAudioFrame) }
         cam.stream.start().onFailure { e, _ -> log("error", "stream.start: ${e.description}") }
         val streaming = withTimeoutOrNull(STREAM_TIMEOUT_MS) { cam.stream.state.first { it == StreamState.STREAMING } }
         if (streaming == null) {
@@ -210,6 +238,19 @@ class GlassesSession(
             }
         }
         return cam
+    }
+
+    private var audioLogged = false
+
+    private fun onAudioFrame(frame: AudioFrame) {
+        // 16-bit PCM in the platform's byte order (little-endian on Android), mono, at the requested rate: no conversion.
+        val b = frame.buffer.duplicate()
+        val n = b.remaining() and 1.inv()
+        if (n <= 0) return
+        if (!audioLogged) { audioLogged = true; log("camera", "glasses audio arriving: ${b.remaining()} bytes/frame") }
+        val bytes = ByteArray(n)
+        b.get(bytes, 0, n)
+        onAudio(bytes, n)
     }
 
     /** JPEG bytes, or null if the camera is unavailable. Takes 1.1–2.0 s on real glasses. */
@@ -235,7 +276,54 @@ class GlassesSession(
                 BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
             }
         }
-        return ByteArrayOutputStream().also { bitmap.compress(Bitmap.CompressFormat.JPEG, 85, it) }.toByteArray()
+        // Very bright scenes (strong light, glare) lose text; dark ones are left alone.
+        val px = IntArray(bitmap.width * bitmap.height).also { bitmap.getPixels(it, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height) }
+        val fixed = ImageFix.correct(px)
+        log("photo", fixed?.let { "bright ($it), corrected" } ?: "luma ${ImageFix.stats(px)}, not corrected")
+        val out = if (fixed != null) Bitmap.createBitmap(px, bitmap.width, bitmap.height, Bitmap.Config.ARGB_8888) else bitmap
+        return ByteArrayOutputStream().also { out.compress(Bitmap.CompressFormat.JPEG, 85, it) }.toByteArray()
+    }
+
+    // -- motion (head pitch) --
+
+    private fun attachMotion(s: DeviceSession) {
+        s.addMotion(MotionConfiguration(samplingRate = MotionSamplingRate.HZ_5)).fold(
+            onSuccess = { m ->
+                motion = m
+                jobs += scope.launch { m.samples.collect(::onMotion) }
+                jobs += scope.launch {
+                    m.state.collect { st ->
+                        log("motion", "$st")
+                        if (st == MotionState.PAUSED || st == MotionState.STOPPED) setHead(null)
+                    }
+                }
+                jobs += scope.launch { m.errors.collect { err -> err?.let { log("error", "motion: ${it.description}") } } }
+                m.start() // the capability starts STOPPED; the collectors above are already running
+            },
+            onFailure = { e, _ -> log("error", "addMotion: ${e.description}") }, // nudges needing the head signal are skipped
+        )
+    }
+
+    private fun onMotion(sample: MotionSample) {
+        if (sample.source != MotionSource.GLASSES) return
+        val a = sample.accelerometer ?: return
+        val g = sqrt(a.x * a.x + a.y * a.y + a.z * a.z)
+        if (g < MIN_G) return // free fall / noise
+        // Axes as in BirdSpotter's GlassesAim: y = up, z = back towards the wearer, so z > 0 = nose pitched down.
+        // ponytail: axis sign is NOT verified on hardware; if nudges never/always see "head down", flip the sign or the knobs below.
+        val elevation = -Math.toDegrees(asin((a.z / g).toDouble().coerceIn(-1.0, 1.0)))
+        // ponytail: calibration knobs. Down below -DOWN_DEG, back up above -UP_DEG (hysteresis between).
+        setHead(when {
+            elevation < -DOWN_DEG -> true
+            elevation > -UP_DEG -> false
+            else -> headDown ?: return
+        })
+    }
+
+    private fun setHead(down: Boolean?) {
+        if (down == headDown) return
+        headDown = down
+        onHead(down)
     }
 
     // -- HUD --
@@ -280,11 +368,16 @@ class GlassesSession(
         inputs = null
         display = null
         camera = null
+        motion = null
+        setHead(null)
         session = null
     }
 
     private companion object {
         const val STREAM_TIMEOUT_MS = 8_000L
         const val PHOTO_TIMEOUT_MS = 6_000L
+        const val MIN_G = 5f
+        const val DOWN_DEG = 25.0
+        const val UP_DEG = 15.0
     }
 }

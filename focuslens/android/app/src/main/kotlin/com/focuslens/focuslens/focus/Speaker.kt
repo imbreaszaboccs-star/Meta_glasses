@@ -11,13 +11,14 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 
 /**
- * Speaks a hint. Primary: backend /tts (natural Czech voice). Fallback: Android TextToSpeech (offline).
+ * Speaks a hint. One voice: backend /api/ai/tts. Android TextToSpeech only when there is no HUD to read the step from.
  * Audio goes to the current media route, which is the glasses when they are connected over A2DP.
  */
 class Speaker(private val context: Context) {
     private var tts: TextToSpeech? = null
     private var ttsReady = false
     private var player: MediaPlayer? = null
+    private var last: Pair<String, ByteArray>? = null // WAV of the last text, so repeat/next doesn't refetch
 
     private val attrs = AudioAttributes.Builder()
         .setUsage(AudioAttributes.USAGE_ASSISTANT)
@@ -28,11 +29,13 @@ class Speaker(private val context: Context) {
         if (tts == null) tts = TextToSpeech(context) { status -> ttsReady = status == TextToSpeech.SUCCESS }
     }
 
-    suspend fun speak(text: String, locale: String) {
+    /** [hasDisplay]: the text is on the HUD, so a failed /api/ai/tts stays silent instead of switching voice. */
+    suspend fun speak(text: String, locale: String, hasDisplay: Boolean = false) {
         stop()
-        val wav = withTimeoutOrNull(2_500) { withContext(Dispatchers.IO) { HintClient.tts(text, 2_500) } }
+        val wav = last?.takeIf { it.first == text }?.second
+            ?: withTimeoutOrNull(6_000) { withContext(Dispatchers.IO) { HintClient.tts(text, 6_000) } }?.also { last = text to it }
         if (wav != null && playWav(wav)) return
-        speakLocal(text, locale)
+        if (!hasDisplay) speakLocal(text, locale)
     }
 
     fun speakLocal(text: String, locale: String) {

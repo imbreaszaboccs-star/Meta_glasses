@@ -14,9 +14,10 @@ import org.json.JSONObject
  *
  * card.json:
  *   {id, sessionId, createdAt, mode, locale, status: done|pending|failed, error?,
- *    steps:[{text, at, photo?}], card:{title, summary, correction, transcript_tail},
+ *    steps:[{text, at, photo?}], card:{title, summary, correction, transcript_tail, situation, speakers:[{label, said}]},
+ *    formula?: LaTeX, formulaImage?: "formula.png",
  *    reviewed, timings:{photoMs, encodeMs, aiMs, serverMs, totalMs}, attempts,
- *    request:{ts, previous[], audio?, audioMime?, photo?}   ← only while pending (for the retry worker)
+ *    request:{ts, previous[], recent[], audio?, audioMime?, photo?}   ← only while pending (for the retry worker)
  *    audio?: "audio.ogg"}
  *
  * The Flutter UI only reads these files. Every mutation goes through here (one lock), and every write is atomic.
@@ -61,6 +62,12 @@ class CardStore(filesDir: File) {
     fun saveFile(id: String, name: String, bytes: ByteArray) = synchronized(lock) {
         val d = dir(id)
         if (d.exists()) writeAtomic(File(d, name), bytes)
+    }
+
+    /** Saves the formula picture next to the card and records it in [c] (call inside [update]). */
+    fun putFormula(id: String, c: JSONObject, latex: String, png: ByteArray?) {
+        if (latex.isNotEmpty()) c.put("formula", latex)
+        if (png != null) { saveFile(id, "formula.png", png); c.put("formulaImage", "formula.png") }
     }
 
     fun readFile(id: String, name: String): ByteArray? =

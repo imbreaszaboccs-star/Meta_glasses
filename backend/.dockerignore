@@ -5,3 +5,6 @@ __pycache__
 *.jpg
 test_app.py
 smoke.py
+test_remote.py
+data/
+glasses/make_icons.py

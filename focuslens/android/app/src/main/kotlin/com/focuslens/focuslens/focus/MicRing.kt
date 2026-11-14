@@ -7,13 +7,16 @@ import android.media.MediaRecorder
 import android.util.Log
 
 /**
- * Phone microphone → [PcmRing]. Audio lives only in RAM and is overwritten continuously.
+ * Phone microphone (or, via [startExternal]/[feed], the glasses microphone) → [PcmRing]. Audio lives only in RAM and is overwritten continuously.
  * Nothing is written to disk until the user asks for help.
  */
 class MicRing(seconds: Int) {
     val ring = PcmRing(seconds * BYTES_PER_SECOND)
 
     @Volatile private var running = false
+
+    /** Gets every 100 ms chunk (buffer reused; copy what you keep). Must not block. */
+    @Volatile var listener: ((ByteArray, Int) -> Unit)? = null
     private var thread: Thread? = null
 
     val isListening: Boolean get() = running
@@ -39,7 +42,7 @@ class MicRing(seconds: Int) {
             try {
                 while (running) {
                     val n = rec.read(chunk, 0, chunk.size)
-                    if (n > 0) ring.add(chunk, n) else if (n < 0) { Log.w(TAG, "read error $n"); break }
+                    if (n > 0) { ring.add(chunk, n); listener?.invoke(chunk, n) } else if (n < 0) { Log.w(TAG, "read error $n"); break }
                 }
             } finally {
                 runCatching { rec.stop() }
@@ -48,6 +51,16 @@ class MicRing(seconds: Int) {
             }
         }, "focuslens-mic").apply { isDaemon = true; start() }
         return true
+    }
+
+    /** No recorder of its own: someone else (the glasses stream) pushes audio through [feed]. */
+    fun startExternal() { running = true }
+
+    /** PCM16 16 kHz mono from outside; same path as the recorder thread. */
+    fun feed(chunk: ByteArray, n: Int) {
+        if (!running) return
+        ring.add(chunk, n)
+        listener?.invoke(chunk, n)
     }
 
     /** Stops recording AND wipes the buffer. */

@@ -25,10 +25,13 @@ class FocusStatus {
   Map<String, dynamic> get _g => _sub('glasses');
   bool get glassesKnown => _g['known'] == true;
   bool get glassesConnected => _g['connected'] == true;
+  String? get linkState => _g['linkState'] as String?;
   String? get glassesName => _g['name'] as String?;
   int? get glassesBattery => (_g['battery'] as num?)?.toInt();
   bool get displayCapable => _g['displayCapable'] == true;
   String get cameraPermission => _g['cameraPermission'] as String? ?? 'unknown';
+  /// DAT microphone permission of the glasses (audio streaming), granted | denied | unknown.
+  String get glassesMicPermission => _g['micPermission'] as String? ?? 'unknown';
   String get glassesPhase => _g['phase'] as String? ?? 'OFF';
   bool get glassesReady => glassesPhase == 'READY';
   bool get hasDisplay => _g['hasDisplay'] == true;
@@ -44,14 +47,18 @@ class FocusStatus {
   // focus block
   Map<String, dynamic> get _f => _sub('focus');
   bool get running => _f['running'] == true;
-  String get mode => _f['mode'] as String? ?? 'lecture';
+  String get mode => _f['mode'] as String? ?? 'auto';
   DateTime? get startedAt {
     final ms = (_f['startedAt'] as num?)?.toInt();
     return ms == null ? null : DateTime.fromMillisecondsSinceEpoch(ms);
   }
   int get hintCount => (_f['hintCount'] as num?)?.toInt() ?? 0;
   bool get micPaused => _f['micPaused'] == true;
+  /// The focus anchor of this block ('' if none).
+  String get goal => _f['goal'] as String? ?? '';
   bool get phoneOnly => _f['phoneOnly'] == true;
+  /// Where the running block listens: phone | glasses | none.
+  String get audioSource => _f['audioSource'] as String? ?? 'none';
 
   // mic
   bool get listening => _sub('mic')['listening'] == true;
@@ -72,5 +79,13 @@ class FocusStatus {
   bool? get serverOk => _sub('server')['ok'] as bool?;
   String? get serverError => _sub('server')['error'] as String?;
 
-  int get bufferSecConfig => (_sub('config')['bufferSec'] as num?)?.toInt() ?? 180;
+  Map<String, dynamic> get config => _sub('config');
+
+  // glasses menu (web app on the glasses, via the backend relay)
+  Map<String, dynamic> get _r => _sub('remote');
+  bool get remotePaired => _r['paired'] == true;
+  bool get remoteConnected => _r['connected'] == true;
+  String? get remoteError => _r['lastError'] as String?;
+
+  int get bufferSecConfig => (_sub('config')['bufferSec'] as num?)?.toInt() ?? 150;
 }

@@ -36,14 +36,18 @@ class RetryWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx,
             val audio = audioName?.let { n -> store.readFile(id, n)?.let { EncodedAudio(it, req.optString("audioMime", "audio/wav"), n.substringAfterLast('.')) } }
             val previous = req.optJSONArray("previous") ?: JSONArray()
             val res = HintClient.hint(HintRequest(
-                photo, audio, card.optString("locale", "en"), card.optString("mode", "lecture"),
+                photo, audio, card.optString("locale", "en"), card.optString("mode", "auto"),
                 req.optString("ts"), (0 until previous.length()).map { previous.getString(it) }, id,
+                req.optJSONArray("recent") ?: JSONArray(),
+                req.optString("goal"), req.optJSONArray("mistakes")?.let { m -> (0 until m.length()).map { m.getString(it) } } ?: emptyList(),
             ))
             val ok = res.ok
             val attempts = card.optInt("attempts") + 1
             if (ok != null) {
                 store.update(id) { c ->
                     c.getJSONArray("steps").put(org.json.JSONObject().put("text", ok.nextStep).put("at", CardStore.now()).apply { req.optString("photo").takeIf { it.isNotEmpty() }?.let { put("photo", it) } })
+                    store.putFormula(id, c, ok.formula, ok.formulaPng)
+                    ok.mistake.takeIf { it.isNotBlank() }?.let { engine.mistakes.add(it) }
                     c.put("card", ok.card).put("status", CardStore.STATUS_DONE).put("attempts", attempts).put("late", true)
                     c.remove("error"); c.remove("request")
                 }

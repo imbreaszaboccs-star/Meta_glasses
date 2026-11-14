@@ -8,7 +8,9 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
@@ -18,14 +20,25 @@ import com.focuslens.focuslens.MainActivity
 import com.focuslens.focuslens.R
 
 /**
- * Keeps the process and the microphone alive while a focus block runs with the phone locked in a pocket.
+ * Keeps the process alive. Two modes of the one foreground service:
+ *  - focus block running: Help / Pause / End notification; type connectedDevice, plus microphone only when the
+ *    block records the phone mic (which can only be started while the app is visible, Android 14+).
+ *  - standby (glasses menu paired, no block): quiet notification, type connectedDevice, so the relay connection
+ *    ([RemoteLink]) survives and a block can be started from the glasses with the phone locked.
  * A lifecycle wrapper only (same pattern as Meta's BirdSpotter RealtimeSessionService): the state is
- * [FocusEngine]'s. Its notification is the pocketed session's only phone surface: Help / Pause / End.
+ * [FocusEngine]'s.
  */
 class FocusService : Service(), EngineListener {
     private var reading: List<Any?>? = null
+    private var fgType = -1 // foreground service type in force, -1 = not in the foreground yet
 
     private val engine get() = (application as FocusLensApp).engine
+    private val remote get() = (application as FocusLensApp).remote
+
+    override fun onCreate() {
+        super.onCreate()
+        instance = this
+    }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -34,25 +47,12 @@ class FocusService : Service(), EngineListener {
             ACTION_HELP -> engine.help("notification")
             ACTION_PAUSE -> engine.pauseMic()
             ACTION_RESUME -> engine.resumeMic()
-            ACTION_END -> { engine.stopFocus("notification"); return START_NOT_STICKY }
+            ACTION_END -> engine.stopFocus("notification")
             ACTION_RECONNECT -> engine.reconnectGlasses()
+            ACTION_OFF -> Thread { remote.unpair() }.start() // forgets the pairing → update() ends standby
         }
-        val status = engine.status()
-        if ((status["focus"] as Map<*, *>)["running"] != true) {
-            stopSelf()
-            return START_NOT_STICKY
-        }
-        try {
-            startForeground(
-                ID_FOCUS, build(status),
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE or ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE,
-            )
-        } catch (e: Exception) {
-            // Platform refused (e.g. started from background). The engine keeps running while the process lives.
-            Log.w("FocusLens", "startForeground refused: $e")
-            stopSelf()
-            return START_NOT_STICKY
-        }
+        // (Re)registering calls onStatus at once → update() → startForeground within the 5 s deadline.
+        reading = null
         engine.removeListener(this)
         engine.addListener(this)
         return START_NOT_STICKY
@@ -60,18 +60,59 @@ class FocusService : Service(), EngineListener {
 
     override fun onStatus(status: Map<String, Any?>) {
         val focus = status["focus"] as Map<*, *>
-        if (focus["running"] != true) { stopSelf(); return }
         val hint = status["hint"] as Map<*, *>
         // Redraw only when what the notification shows changes (status ticks every second).
-        val r = listOf(focus["mode"], focus["micPaused"], hint["phase"], hint["lastText"], (status["config"] as Map<*, *>)["language"])
+        val r = listOf(focus["running"], focus["audioSource"], focus["mode"], focus["micPaused"], hint["phase"], hint["lastText"],
+            (status["config"] as Map<*, *>)["language"], remote.enabled)
         if (r == reading) return
         reading = r
-        runCatching { NotificationManagerCompat.from(this).notify(ID_FOCUS, build(status)) }
+        update(status)
+    }
+
+    /** Standby, focus, or neither (stop); retypes the foreground service when the microphone is added or dropped. */
+    fun update(status: Map<String, Any?> = engine.status()) {
+        val focus = status["focus"] as Map<*, *>
+        val running = focus["running"] == true
+        if (!running && !remote.enabled) {
+            fgType = -1
+            stopSelf()
+            return
+        }
+        val type = ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE or
+            (if (running && focus["audioSource"] == "phone") ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE else 0)
+        val n = if (running) build(status) else standby()
+        try {
+            if (type != fgType) { startForeground(ID_FOCUS, n, type); fgType = type }
+            else NotificationManagerCompat.from(this).notify(ID_FOCUS, n)
+        } catch (e: Exception) {
+            // Platform refused (e.g. mic type from the background). The engine keeps running while the process lives.
+            Log.w("FocusLens", "startForeground refused: $e")
+            if (fgType == -1) stopSelf()
+            else runCatching { NotificationManagerCompat.from(this).notify(ID_FOCUS, n) }
+        }
     }
 
     override fun onDestroy() {
         engine.removeListener(this)
+        if (instance === this) instance = null
         super.onDestroy()
+    }
+
+    private fun standby(): Notification {
+        val s = Strings
+        Notifications.channels(this)
+        return NotificationCompat.Builder(this, CHANNEL_STANDBY)
+            .setSmallIcon(R.drawable.ic_stat_focus)
+            .setContentTitle(s.standbyTitle)
+            .setContentText(s.standbyBody)
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .setSilent(true)
+            .setShowWhen(false)
+            .setCategory(NotificationCompat.CATEGORY_SERVICE)
+            .setContentIntent(Notifications.openApp(this))
+            .addAction(0, s.actionTurnOff, action(ACTION_OFF, 4))
+            .build()
     }
 
     private fun build(status: Map<String, Any?>): Notification {
@@ -117,6 +158,7 @@ class FocusService : Service(), EngineListener {
     companion object {
         const val CHANNEL_FOCUS = "focus"
         const val CHANNEL_ALERTS = "alerts"
+        const val CHANNEL_STANDBY = "standby"
         const val ID_FOCUS = 1
         const val ID_INTERRUPTED = 2
         const val ACTION_HELP = "com.focuslens.HELP"
@@ -124,6 +166,18 @@ class FocusService : Service(), EngineListener {
         const val ACTION_RESUME = "com.focuslens.RESUME"
         const val ACTION_END = "com.focuslens.END"
         const val ACTION_RECONNECT = "com.focuslens.RECONNECT"
+        const val ACTION_OFF = "com.focuslens.OFF"
+
+        @Volatile private var instance: FocusService? = null
+        val active: Boolean get() = instance != null
+
+        /** Standby is the same service: it decides between standby / focus / stop itself. */
+        fun standby(ctx: Context) = start(ctx)
+
+        /** Pairing or a block changed: let a running service re-evaluate (never starts one). */
+        fun recheck() {
+            Handler(Looper.getMainLooper()).post { instance?.update() }
+        }
 
         fun start(ctx: Context) {
             try {
@@ -132,10 +186,6 @@ class FocusService : Service(), EngineListener {
                 Log.w("FocusLens", "FocusService start refused: $e")
             }
         }
-
-        fun stop(ctx: Context) {
-            ctx.stopService(Intent(ctx, FocusService::class.java))
-        }
     }
 }
 
@@ -143,6 +193,7 @@ object Notifications {
     fun channels(ctx: Context, s: Strings = Strings) {
         val nm = ctx.getSystemService(NotificationManager::class.java)
         nm.createNotificationChannel(NotificationChannel(FocusService.CHANNEL_FOCUS, s.channelFocus, NotificationManager.IMPORTANCE_LOW))
+        nm.createNotificationChannel(NotificationChannel(FocusService.CHANNEL_STANDBY, s.channelStandby, NotificationManager.IMPORTANCE_LOW))
         nm.createNotificationChannel(NotificationChannel(FocusService.CHANNEL_ALERTS, s.channelAlerts, NotificationManager.IMPORTANCE_DEFAULT))
     }
 

@@ -8,6 +8,8 @@ import '../../widgets/glasses_status.dart';
 import '../diagnostics/diagnostics_screen.dart';
 import '../onboarding/glasses_setup.dart';
 import '../onboarding/privacy_text.dart';
+import 'glasses_menu_section.dart';
+import 'integrations_section.dart';
 
 const appVersion = '1.0.0';
 
@@ -116,16 +118,31 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 onChanged: settings.setReadAloud,
               ),
 
+              const SectionLabel('Glasses menu'),
+              const GlassesMenuSection(),
+
               const SectionLabel('Listening'),
+              SwitchListTile(
+                title: const Text('Wake word "hey lens"'),
+                subtitle: const Text('Say it to ask for help without pinching. Detected on the phone, nothing is sent.'),
+                value: settings.wakeWord,
+                onChanged: settings.setWakeWord,
+              ),
+              SwitchListTile(
+                title: const Text('Proactive nudges'),
+                subtitle: const Text('Glasses notice when you drift.'),
+                value: settings.nudges,
+                onChanged: settings.setNudges,
+              ),
               ListTile(
                 title: const Text('Memory length'),
                 subtitle: const Text('How much recent sound the phone keeps for a step.'),
-                trailing: Text('${settings.bufferSec ~/ 60} min', style: text.bodyMedium),
+                trailing: Text('${settings.bufferSec % 60 == 0 ? settings.bufferSec ~/ 60 : (settings.bufferSec / 60).toStringAsFixed(1)} min', style: text.bodyMedium),
                 onTap: () async {
                   final v = await pickOne(context, title: 'Memory length', current: settings.bufferSec, options: const [
                     (60, '1 minute'),
                     (120, '2 minutes'),
-                    (180, '3 minutes'),
+                    (150, '2.5 minutes'),
                   ]);
                   if (v != null) settings.setBufferSec(v);
                 },
@@ -161,6 +178,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 },
               ),
 
+              const SectionLabel('Integrations'),
+              const IntegrationsSection(),
+
               const SectionLabel('Privacy'),
               ListTile(
                 title: const Text('Delete cards after'),
@@ -176,6 +196,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 title: const Text('Sound and privacy'),
                 trailing: const Icon(Icons.chevron_right_rounded),
                 onTap: () => _push(const PrivacyScreen()),
+              ),
+              ListTile(
+                title: const Text('Forget my mistake profile'),
+                subtitle: const Text('The recurring mistakes the AI remembers to watch for.'),
+                onTap: () async {
+                  await context.app.focus.forgetMistakes();
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Mistake profile cleared')));
+                  }
+                },
               ),
               ListTile(
                 title: Text('Delete all data', style: TextStyle(color: Tokens.of(context).brick)),

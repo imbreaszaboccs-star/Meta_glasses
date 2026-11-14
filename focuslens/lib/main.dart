@@ -5,6 +5,7 @@ import 'app.dart';
 import 'app_scope.dart';
 import 'data/cards_repository.dart';
 import 'data/focus_repository.dart';
+import 'data/inbox_repository.dart';
 import 'data/settings.dart';
 
 Future<void> main() async {
@@ -17,7 +18,9 @@ Future<void> main() async {
   // The native engine mirrors the settings it needs (mode, language, buffer…).
   settings.onConfigChanged = focus.updateConfig;
   await focus.updateConfig(settings.toConfig());
+  focus.status.addListener(() => settings.adoptNative(focus.status.value.config));
   final cards = CardsRepository(focus)..reload();
+  final inbox = InboxRepository(focus)..reload();
 
-  runApp(AppScope(focus: focus, settings: settings, cards: cards, child: const FocusLensApp()));
+  runApp(AppScope(focus: focus, settings: settings, cards: cards, inbox: inbox, child: const FocusLensApp()));
 }

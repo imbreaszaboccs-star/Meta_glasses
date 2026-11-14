@@ -52,11 +52,18 @@ class _Ready extends StatefulWidget {
 
 class _ReadyState extends State<_Ready> {
   bool _starting = false;
+  final _goal = TextEditingController();
+
+  @override
+  void dispose() {
+    _goal.dispose();
+    super.dispose();
+  }
 
   Future<void> _start() async {
     setState(() => _starting = true);
     try {
-      await startFocusFlow(context);
+      await startFocusFlow(context, goal: _goal.text);
     } finally {
       if (mounted) setState(() => _starting = false);
     }
@@ -69,7 +76,7 @@ class _ReadyState extends State<_Ready> {
     final text = Theme.of(context).textTheme;
     final t = Tokens.of(context);
     final g = glassesLine(s);
-    final glassesOk = s.registered && s.glassesConnected;
+    final glassesOk = s.registered && s.glassesKnown;
 
     return ListenableBuilder(
       listenable: Listenable.merge([app.settings, app.cards]),
@@ -86,7 +93,18 @@ class _ReadyState extends State<_Ready> {
             ModePicker(value: mode, onChanged: app.settings.setMode),
             const SizedBox(height: Gap.s),
             Text(modeHelp[mode]!, style: text.bodyMedium!.copyWith(color: t.graphite)),
-            const SizedBox(height: Gap.xl),
+            const SizedBox(height: Gap.l),
+            TextField(
+              controller: _goal,
+              maxLength: 200,
+              textInputAction: TextInputAction.done,
+              decoration: const InputDecoration(
+                labelText: 'Goal for this block (optional)',
+                hintText: 'e.g. finish problem set 3',
+                counterText: '',
+              ),
+            ),
+            const SizedBox(height: Gap.l),
             FilledButton(
               onPressed: _starting ? null : _start,
               child: SizedBox(
@@ -224,6 +242,10 @@ class _RunningState extends State<_Running> {
           ),
           Text(elapsed(since), style: TextStyle(fontFamily: kMono, fontSize: 18, color: t.graphite)),
         ]),
+        if (s.goal.isNotEmpty) ...[
+          const SizedBox(height: Gap.xs),
+          Text('⚓ ${s.goal}', style: text.bodyMedium),
+        ],
         const SizedBox(height: Gap.m),
 
         // listening line
@@ -235,7 +257,7 @@ class _RunningState extends State<_Running> {
               s.micPaused
                   ? 'Mic paused. Nothing is being kept.'
                   : s.listening
-                      ? 'Listening · last $minutes min'
+                      ? 'Listening · last $minutes min${s.audioSource == 'glasses' ? ' · glasses mic' : ''}'
                       : s.micError == 'permission'
                           ? 'Microphone not allowed'
                           : 'Microphone not running',
@@ -254,7 +276,7 @@ class _RunningState extends State<_Running> {
           Expanded(
             child: Text(
               s.phoneOnly
-                  ? (s.glassesConnected ? 'Phone only · glasses connecting…' : 'Phone only · glasses not connected')
+                  ? (s.glassesKnown ? 'Phone only · glasses connecting…' : 'Phone only · no glasses paired')
                   : s.glassesReady
                       ? (s.hasDisplay ? 'Glasses ready · pinch for help' : 'Glasses ready · steps are spoken')
                       : 'Glasses: ${s.glassesPhase.toLowerCase()}',

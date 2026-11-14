@@ -10,6 +10,8 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <!-- Glasses menu: restart the standby service after a reboot (connectedDevice FGS is allowed from BOOT_COMPLETED). -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <application
         android:name=".FocusLensApp"
@@ -59,6 +61,12 @@
             android:exported="false"
             android:foregroundServiceType="microphone|connectedDevice" />
 
+        <receiver android:name=".BootReceiver" android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
+
         <!-- Sharing a card photo from the review screen. -->
         <provider
             android:name="androidx.core.content.FileProvider"
@@ -83,6 +91,13 @@
         </intent>
         <!-- Meta AI app (pairs the glasses); needed to open it from onboarding -->
         <package android:name="com.facebook.stella" />
+        <!-- AnkiDroid: "Add to AnkiDroid" in the evening review -->
+        <package android:name="com.ichi2.anki" />
+        <!-- Meta AI deep link that installs the FocusLens web app on the glasses -->
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="fb-viewapp" />
+        </intent>
         <intent>
             <action android:name="android.intent.action.TTS_SERVICE" />
         </intent>

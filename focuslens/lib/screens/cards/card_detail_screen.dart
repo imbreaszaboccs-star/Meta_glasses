@@ -1,12 +1,14 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_math_fork/flutter_math.dart';
 import 'package:just_audio/just_audio.dart';
 
 import '../../app_scope.dart';
 import '../../data/cards_repository.dart';
 import '../../theme/tokens.dart';
 import '../../widgets/common.dart';
+import 'notion_export.dart';
 
 /// One card, top to bottom: photo · step(s) · correction · what happened · what was said · audio · actions.
 class CardDetailScreen extends StatefulWidget {
@@ -52,6 +54,12 @@ class _CardDetailScreenState extends State<CardDetailScreen> {
                 icon: const Icon(Icons.ios_share_rounded),
                 onPressed: () => context.app.focus.shareCard(card.toShareText(), card.photo),
               ),
+              if (card.done)
+                IconButton(
+                  tooltip: 'Export to Notion',
+                  icon: const Icon(Icons.upload_file_rounded),
+                  onPressed: () => exportToNotion(context, [card.id]),
+                ),
               IconButton(
                 tooltip: 'Delete',
                 icon: const Icon(Icons.delete_outline_rounded),
@@ -76,14 +84,14 @@ class _CardDetailScreenState extends State<CardDetailScreen> {
           Text(card.title, style: text.headlineSmall),
           const SizedBox(height: Gap.xs),
         ],
-        Text('${modeNames[card.mode] ?? card.mode}${card.late ? ' · answered later' : ''}', style: text.bodySmall),
+        Text('${modeNames[card.mode] ?? card.mode}${card.situation == null ? '' : ' · ${situationNames[card.situation] ?? card.situation}'}${card.late ? ' · answered later' : ''}', style: text.bodySmall),
         const SizedBox(height: Gap.m),
 
         if (card.photos.isNotEmpty) _Photos(card.photos),
 
         if (card.pending || card.failed) _StatusPanel(card),
 
-        if (card.steps.isNotEmpty) ...[
+        if (card.steps.isNotEmpty && card.quest.isEmpty) ...[
           SectionLabel(card.steps.length == 1 ? 'Step' : 'Steps', padding: const EdgeInsets.only(top: Gap.l, bottom: Gap.s)),
           for (final (i, s) in card.steps.indexed)
             Padding(
@@ -97,6 +105,62 @@ class _CardDetailScreenState extends State<CardDetailScreen> {
                 Expanded(child: Text(s.text, style: text.headlineSmall)),
               ]),
             ),
+        ],
+
+        if (card.quest.isNotEmpty) ...[
+          const SectionLabel('Micro-steps', padding: EdgeInsets.only(top: Gap.l, bottom: Gap.s)),
+          for (final (i, (step, done)) in card.quest.indexed)
+            Padding(
+              padding: const EdgeInsets.only(bottom: Gap.s),
+              child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                SizedBox(
+                  width: 28,
+                  child: done
+                      ? Icon(Icons.check_rounded, size: 22, color: t.board, semanticLabel: 'Done')
+                      : Text('${i + 1}', style: TextStyle(fontFamily: kMono, fontSize: 20, color: t.graphite, height: 1.3)),
+                ),
+                Expanded(
+                  child: Text(step,
+                      style: text.titleMedium!.copyWith(
+                        decoration: done ? TextDecoration.lineThrough : null,
+                        color: done ? t.graphite : null,
+                      )),
+                ),
+              ]),
+            ),
+        ],
+
+        if (card.cropPath != null) ...[
+          const SizedBox(height: Gap.s),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(6),
+            child: Image.file(File(card.cropPath!), width: double.infinity, fit: BoxFit.contain, semanticLabel: 'The mistake, cropped from the photo'),
+          ),
+        ],
+
+        if (card.formula.isNotEmpty) ...[
+          const SizedBox(height: Gap.s),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(Gap.m),
+            decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(12)),
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Math.tex(
+                card.formula,
+                textStyle: const TextStyle(fontSize: 20, color: Colors.white),
+                onErrorFallback: (_) => SelectableText(card.formula, style: const TextStyle(fontFamily: kMono, fontSize: 12, color: Colors.white)),
+              ),
+            ),
+          ),
+        ] else if (card.formulaPath != null) ...[
+          const SizedBox(height: Gap.s),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(Gap.m),
+            decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(12)),
+            child: Image.file(File(card.formulaPath!), height: 80, fit: BoxFit.contain, semanticLabel: 'Formula'),
+          ),
         ],
 
         if (card.correction.isNotEmpty) ...[
@@ -118,7 +182,20 @@ class _CardDetailScreenState extends State<CardDetailScreen> {
 
         if (card.transcript.isNotEmpty) ...[
           const SectionLabel('What was said', padding: EdgeInsets.only(top: Gap.l, bottom: Gap.s)),
+          // Lines like "S1: …" / "S2: …" stay on their own lines.
           Prose(card.transcript, style: text.bodyMedium!.copyWith(color: t.graphite)),
+        ],
+
+        if (card.speakers.isNotEmpty) ...[
+          const SectionLabel('Who said what', padding: EdgeInsets.only(top: Gap.l, bottom: Gap.s)),
+          for (final (label, said) in card.speakers)
+            Padding(
+              padding: const EdgeInsets.only(bottom: Gap.s),
+              child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                SizedBox(width: 36, child: Text(label, style: TextStyle(fontFamily: kMono, fontSize: 14, color: t.board))),
+                Expanded(child: Text(said, style: text.bodyMedium)),
+              ]),
+            ),
         ],
 
         if (card.audioPath != null) ...[

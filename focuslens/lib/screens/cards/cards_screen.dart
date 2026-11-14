@@ -8,6 +8,8 @@ import '../../data/cards_repository.dart';
 import '../../theme/tokens.dart';
 import '../../widgets/common.dart';
 import 'card_detail_screen.dart';
+import 'notion_export.dart';
+import 'review_screen.dart';
 
 /// The evening review: cards grouped by day, then by focus block.
 class CardsScreen extends StatelessWidget {
@@ -28,7 +30,22 @@ class CardsScreen extends StatelessWidget {
             child: CustomScrollView(slivers: [
               SliverPadding(
                 padding: const EdgeInsets.fromLTRB(Gap.l, Gap.l, Gap.l, Gap.s),
-                sliver: SliverToBoxAdapter(child: Text('Cards', style: text.titleLarge)),
+                sliver: SliverToBoxAdapter(
+                  child: Row(children: [
+                    Expanded(child: Text('Cards', style: text.titleLarge)),
+                    if (todaysCards(repo).isNotEmpty) ...[
+                      TextButton(
+                        onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ReviewScreen())),
+                        child: const Text('Review today'),
+                      ),
+                      PopupMenuButton<String>(
+                        tooltip: 'More',
+                        onSelected: (_) => exportToNotion(context, todaysCards(repo).map((c) => c.id).toList()),
+                        itemBuilder: (_) => const [PopupMenuItem(value: 'notion', child: Text('Export today to Notion'))],
+                      ),
+                    ],
+                  ]),
+                ),
               ),
               if (pending > 0)
                 SliverPadding(

@@ -21,6 +21,7 @@ class CardItem {
     required this.sessionId,
     required this.createdAt,
     required this.mode,
+    required this.situation,
     required this.status,
     required this.error,
     required this.steps,
@@ -32,14 +33,27 @@ class CardItem {
     required this.audioPath,
     required this.photos,
     required this.late,
+    required this.formula,
+    required this.formulaPath,
+    required this.speakers,
+    required this.quest,
+    required this.questIndex,
+    required this.cropPath,
   });
 
   final String id, dir, mode, status, title, summary, correction, transcript;
+  final String? situation; // what the AI detected in auto mode
   final String? sessionId, error, audioPath;
   final DateTime createdAt;
   final List<CardStep> steps;
   final bool reviewed, late;
+  final String formula; // LaTeX source, '' if none
+  final String? formulaPath; // PNG, white on black
+  final List<(String, String)> speakers; // (label, said)
   final List<String> photos; // absolute paths, first = the original photo
+  final List<(String, bool)> quest; // micro-steps (text, done); empty when the hint had a single step
+  final int questIndex; // the step the user was on
+  final String? cropPath; // the error, cropped and framed
 
   bool get pending => status == 'pending';
   bool get failed => status == 'failed';
@@ -84,12 +98,18 @@ class CardItem {
       // A pending card has its photo but no steps yet.
       if (photos.isEmpty && File(path('photo.jpg')).existsSync()) photos.add(path('photo.jpg'));
       final audio = j['audio'] as String?;
+      final q = (j['quest'] as Map?)?.cast<String, dynamic>() ?? const {};
+      final qDone = (q['done'] as List? ?? const []);
+      final quest = <(String, bool)>[
+        for (final (i, t) in (q['steps'] as List? ?? const []).indexed) ('$t', i < qDone.length && qDone[i] == true),
+      ];
       return CardItem(
         id: j['id'] as String? ?? d.uri.pathSegments.where((s) => s.isNotEmpty).last,
         dir: d.path,
         sessionId: j['sessionId'] as String?,
         createdAt: DateTime.tryParse(j['createdAt'] as String? ?? '') ?? d.statSync().modified,
-        mode: j['mode'] as String? ?? 'lecture',
+        mode: j['mode'] as String? ?? 'auto',
+        situation: card['situation'] as String?,
         status: j['status'] as String? ?? 'done',
         error: j['error'] as String?,
         steps: steps,
@@ -101,6 +121,21 @@ class CardItem {
         audioPath: audio != null && File(path(audio)).existsSync() ? path(audio) : null,
         photos: photos,
         late: j['late'] == true,
+        formula: (j['formula'] as String? ?? '').trim(),
+        formulaPath: () {
+          final f = j['formulaImage'] as String?;
+          return f != null && File(path(f)).existsSync() ? path(f) : null;
+        }(),
+        quest: quest,
+        questIndex: (q['index'] as num?)?.toInt() ?? 0,
+        cropPath: () {
+          final f = j['cropImage'] as String?;
+          return f != null && File(path(f)).existsSync() ? path(f) : null;
+        }(),
+        speakers: [
+          for (final m in (card['speakers'] as List? ?? const []).whereType<Map>())
+            if ('${m['said'] ?? ''}'.trim().isNotEmpty) ('${m['label'] ?? ''}'.trim(), '${m['said']}'.trim()),
+        ],
       );
     } catch (e) {
       debugPrint('bad card ${d.path}: $e');
@@ -175,7 +210,7 @@ class CardsRepository extends ChangeNotifier {
           final end = (j['endedAt'] as num?)?.toInt();
           sessions[j['id'] as String] = FocusSession(
             j['id'] as String,
-            j['mode'] as String? ?? 'lecture',
+            j['mode'] as String? ?? 'auto',
             DateTime.fromMillisecondsSinceEpoch((j['startedAt'] as num).toInt()),
             end == null ? null : DateTime.fromMillisecondsSinceEpoch(end),
           );

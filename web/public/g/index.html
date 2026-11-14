@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'">
+<meta name="viewport" content="width=600, height=600, initial-scale=1">
+<meta name="description" content="FocusLens remote for Ray-Ban Display">
+<meta name="mrbd-web-app-capable" content="yes">
+<meta name="application-name" content="FocusLens">
+<title>FocusLens</title>
+<link rel="manifest" href="/g/manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="192x192" href="/g/icon-192.png">
+<link rel="apple-touch-icon" href="/g/icon-192.png">
+<link rel="stylesheet" href="/g/katex/katex.min.css">
+<link rel="stylesheet" href="/g/style.css">
+</head>
+<body>
+<div id="app">
+  <div id="banner" hidden>offline</div>
+  <h1 id="title"></h1>
+  <div id="status"></div>
+  <div id="body"></div>
+  <div id="footer"></div>
+  <div id="hud" hidden></div>
+  <div id="toast" hidden></div>
+  <input id="goalInput" type="text" maxlength="200" aria-label="Goal" tabindex="-1">
+  <input id="codeInput" type="text" maxlength="8" autocapitalize="characters" aria-label="Pairing code" tabindex="-1">
+</div>
+<script src="/g/katex/katex.min.js"></script>
+<script src="/g/app.js"></script>
+</body>
+</html>
