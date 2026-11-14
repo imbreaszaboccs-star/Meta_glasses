@@ -124,6 +124,10 @@ class FocusRepository {
   Future<void> speak(String text) => _call('speak', {'text': text});
   Future<void> stopSpeaking() => _call('stopSpeaking');
 
+  // data collection (motion recordings stay on the phone until exported)
+  Future<void> setImuLabel(String? label) => _call('setImuLabel', {'label': label});
+  Future<IntegrationResult> exportImu() => _result('exportImu');
+
   // inbox, integrations, review (all on the native side; tokens never reach Dart)
   Future<List<dynamic>> inboxList() async => jsonDecode(await _call<String>('inboxList') ?? '[]') as List<dynamic>;
   Future<void> inboxSetDone(String id, bool done) => _call('inboxSetDone', {'id': id, 'done': done});

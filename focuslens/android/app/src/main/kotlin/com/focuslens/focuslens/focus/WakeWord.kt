@@ -82,7 +82,7 @@ class WakeWord(
             val enKeys = keywords && !cs
             if (wake || enKeys) model("vosk-model-en", "vosk-model")?.let { m ->
                 val hits = ArrayList<Hit>()
-                if (wake) hits += Hit(listOf("hey lens"), WAKE_COOLDOWN_MS) { log("wake", "heard \"hey lens\""); onWake() }
+                if (wake) hits += Hit(listOf(WAKE_PHRASE), WAKE_COOLDOWN_MS) { log("wake", "heard \"hey lens\""); onWake() }
                 if (enKeys) hits += Hit(EN_KEYWORDS, KEYWORD_COOLDOWN_MS) { log("wake", "keyword"); onKeyword() }
                 spots += spot(m, hits, extra = if (wake) listOf("lens") else emptyList())
             }
@@ -122,7 +122,8 @@ class WakeWord(
         }
     }
 
-    private companion object {
+    companion object {
+        const val WAKE_PHRASE = "hey lens"
         const val WAKE_COOLDOWN_MS = 3_000L
         const val KEYWORD_COOLDOWN_MS = 10_000L
         val EN_KEYWORDS = listOf("definition", "formula", "important", "exam", "remember this", "key point")

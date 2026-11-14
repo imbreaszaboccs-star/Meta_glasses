@@ -48,6 +48,22 @@ class RemoteLinkTest {
     }
 
     @Test
+    fun replyFlagAndConnectorCommands() {
+        val c = RemoteProto.parse("""{"id":"abc","type":"add_note","args":{"text":"buy milk"},"reply":true}""")!!
+        assertTrue(c.reply)
+        assertEquals("buy milk", c.args.getString("text"))
+        assertTrue(!RemoteProto.parse("""{"id":"abc","type":"help"}""")!!.reply)
+        assertTrue(!RemoteProto.parse("""{"id":"abc","type":"help","reply":"yes"}""")!!.reply)
+        assertNull(v("add_note", """{"text":"buy milk"}"""))
+        assertNull(v("add_note", """{"text":"${"x".repeat(300)}"}"""))
+        assertEquals("bad text", v("add_note", """{"text":"${"x".repeat(301)}"}"""))
+        assertEquals("bad text", v("add_note", """{"text":""}"""))
+        assertEquals("bad text", v("add_note", """{"text":5}"""))
+        assertEquals("bad text", v("add_note"))
+        assertNull(v("last_hint"))
+    }
+
+    @Test
     fun validateInboxAndUnknown() {
         assertNull(v("inbox_done", """{"id":"a","done":true}"""))
         assertEquals("bad id", v("inbox_done", """{"done":true}"""))

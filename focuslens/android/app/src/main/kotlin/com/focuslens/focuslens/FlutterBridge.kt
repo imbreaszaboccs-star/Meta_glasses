@@ -184,6 +184,10 @@ class FlutterBridge(
                 "remoteInstall" -> result.success(arg("url")?.takeIf { it.startsWith("fb-viewapp://") }
                     ?.let { startSafely(Intent(Intent.ACTION_VIEW, Uri.parse(it))) } ?: false)
 
+                // -- data collection (IMU recordings stay on the phone until exported) --
+                "setImuLabel" -> { engine.setImuLabel(arg("label")); result.success(null) }
+                "exportImu" -> io(result) { exportImu() }
+
                 // -- diagnostics --
                 "checkServer" -> { engine.checkServer(); result.success(null) }
                 "diagnostics" -> result.success(engine.diagnostics())
@@ -286,6 +290,23 @@ class FlutterBridge(
         f.writeText(Integrations.csv(cards.map { (it["q"] ?: "") to (it["a"] ?: "") }), Charsets.UTF_8)
         val uri = FileProvider.getUriForFile(activity, "${activity.packageName}.cards", f)
         val i = Intent(Intent.ACTION_SEND).setType("text/csv").putExtra(Intent.EXTRA_STREAM, uri)
+            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        return if (startSafely(Intent.createChooser(i, null))) mapOf("ok" to true) else mapOf("ok" to false, "error" to "No app to share the file with.")
+    }
+
+    /** Zips filesDir/imu into cache/export and opens the share sheet. */
+    private fun exportImu(): Map<String, Any?> {
+        val src = File(activity.filesDir, "imu")
+        val files = src.walkTopDown().filter { it.isFile }.toList()
+        if (files.isEmpty()) return mapOf("ok" to false, "error" to "No recordings yet. Turn on data collection and run a focus block.")
+        val dir = File(activity.cacheDir, "export").apply { mkdirs() }
+        dir.listFiles()?.forEach { it.delete() }
+        val zip = File(dir, "focuslens-imu-${java.time.LocalDate.now()}.zip")
+        java.util.zip.ZipOutputStream(zip.outputStream().buffered()).use { z ->
+            for (f in files) { z.putNextEntry(java.util.zip.ZipEntry(f.relativeTo(src).invariantSeparatorsPath)); f.inputStream().use { it.copyTo(z) }; z.closeEntry() }
+        }
+        val uri = FileProvider.getUriForFile(activity, "${activity.packageName}.cards", zip)
+        val i = Intent(Intent.ACTION_SEND).setType("application/zip").putExtra(Intent.EXTRA_STREAM, uri)
             .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         return if (startSafely(Intent.createChooser(i, null))) mapOf("ok" to true) else mapOf("ok" to false, "error" to "No app to share the file with.")
     }

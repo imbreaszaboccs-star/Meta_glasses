@@ -52,6 +52,20 @@ const obj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' 
 export const phoneSecret = (c: Ctx, id: string) => mac(c.secret, `p|${id}`);
 const webToken = (c: Ctx, id: string, gen: string) => `${id}.${gen}.${mac(c.secret, `w|${id}|${gen}`)}`;
 
+/** Meta AI connector (MCP) token: `m.id.gen.mac`, revoked by unpair like web tokens. */
+export const museToken = (c: Ctx, id: string, gen: string) => `m.${id}.${gen}.${mac(c.secret, `m|${id}|${gen}`)}`;
+
+/** Checks a connector token; one MGET (view + gen). */
+export async function museAuth(c: Ctx, req: Request) {
+  const t = bearer(req), [m, id, gen] = t.split('.');
+  if (m !== 'm' || !id || !gen || !ID_RE.test(id) || !/^\d{1,12}$/.test(gen) || !same(t, museToken(c, id, gen))) return null;
+  const [view, cur] = await c.kv.mget(`view:${id}`, `gen:${id}`);
+  return (cur ?? '0') === gen ? { id, view } : null;
+}
+
+export const sign = (c: Ctx, domain: string, payload: string) => mac(c.secret, `${domain}|${payload}`);
+export { same as safeEqual, sha };
+
 function phoneAuth(c: Ctx, req: Request): string | null {
   const id = req.headers.get('x-device-id') ?? '';
   return ID_RE.test(id) && same(bearer(req), phoneSecret(c, id)) ? id : null;
@@ -98,6 +112,7 @@ const isMode = (v: unknown) => (typeof v === 'string' && MODES.includes(v) ? v :
 const isBool = (v: unknown) => (typeof v === 'boolean' ? v : undefined);
 const isItem = (v: unknown) => (typeof v === 'string' && ITEM_RE.test(v) ? v : undefined);
 const isGoal = (v: unknown) => (typeof v === 'string' && v.length <= 1000 ? clean(v, 200) : undefined);
+const isNote = (v: unknown) => (typeof v === 'string' && v.length <= 2000 && clean(v, 300) ? clean(v, 300) : undefined);
 
 export const COMMANDS: Record<string, Validator> = {
   start_focus: only({ mode: isMode, goal: isGoal }),
@@ -108,7 +123,33 @@ export const COMMANDS: Record<string, Validator> = {
   inbox_delete: only({ id: isItem }, ['id']),
   // v2: the web app owns the display, so glasses input (arrows/Enter/back) is forwarded to FocusEngine.
   gesture: only({ g: (v) => (typeof v === 'string' && GESTURES.includes(v) ? v : undefined) }, ['g']),
+  // v2: Meta AI connector tools (lib/mcp.ts); the phone answers them via POST res.
+  add_note: only({ text: isNote }, ['text']),
+  last_hint: only({}),
 };
+
+/** Queues a validated command; `reply` asks the phone to POST its answer to res. Null if args are invalid. */
+export async function enqueue(c: Ctx, id: string, type: string, rawArgs: Args, reply = false) {
+  const args = COMMANDS[type]?.(rawArgs);
+  if (!args) return null;
+  const cmd = { id: randomBytes(8).toString('hex'), type, args, ...(reply ? { reply: true } : {}) };
+  const n = await c.kv.rpush(`cmds:${id}`, JSON.stringify(cmd));
+  await c.kv.expire(`cmds:${id}`, LIVE_TTL);
+  return { cmd, n };
+}
+
+/** Long-polls the phone's answer to a `reply` command. ponytail: GET every 500 ms (~2 Redis cmds/s), FCM later. */
+export async function awaitResult(c: Ctx, id: string, cmdId: string, timeoutMs: number, sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))) {
+  const end = c.now() + timeoutMs;
+  while (c.now() < end) {
+    const v = await c.kv.get(`res:${id}:${cmdId}`);
+    if (v !== null) { try { return JSON.parse(v) as { ok: boolean; text: string }; } catch { return null; } }
+    await sleep(500);
+  }
+  return null;
+}
+
+export const isOnline = (c: Ctx, view: string | null) => { const v = parseView(view); return !!v && c.now() - v.ts < ONLINE_MS; };
 
 function cleanAcks(v: unknown) {
   if (!Array.isArray(v)) return [];
@@ -144,9 +185,9 @@ function clientIp(req: Request) {
   return req.headers.get('x-real-ip') ?? req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? '?';
 }
 
-async function claim(c: Ctx, req: Request) {
-  const b = await body(req);
-  const code = obj(b) && typeof b.code === 'string' && b.code.length === CODE_LEN ? b.code.toUpperCase() : null;
+/** Trades a one-time pairing code (rate limited per IP) for the device id + current gen; 404/422/429 otherwise. */
+export async function claimCode(c: Ctx, req: Request, raw: unknown): Promise<{ id: string; gen: string } | Response> {
+  const code = typeof raw === 'string' && raw.trim().length === CODE_LEN ? raw.trim().toUpperCase() : null;
   if (!code) return err(422, 'bad code');
   const rl = `rl:${sha(clientIp(req)).slice(0, 16)}:${Math.floor(c.now() / 60_000)}`;
   const n = await c.kv.incr(rl);
@@ -158,7 +199,13 @@ async function claim(c: Ctx, req: Request) {
   const [live, gen] = await c.kv.mget(`pcode:${id}`, `gen:${id}`);
   if (live !== h || gen === 'dead') return err(404, 'code invalid or expired');
   await c.kv.del(`pcode:${id}`);
-  return json({ web_token: webToken(c, id, gen ?? '0') });
+  return { id, gen: gen ?? '0' };
+}
+
+async function claim(c: Ctx, req: Request) {
+  const b = await body(req);
+  const r = await claimCode(c, req, obj(b) ? b.code : null);
+  return r instanceof Response ? r : json({ web_token: webToken(c, r.id, r.gen) });
 }
 
 async function unpair(c: Ctx, id: string) {
@@ -209,13 +256,17 @@ async function command(c: Ctx, req: Request) {
   const raw = b.args === undefined ? {} : obj(b.args) ? b.args : null;
   const args = raw && validate(raw);
   if (!args) return err(422, 'bad args');
-  const v = parseView(w.view);
-  if (!v || c.now() - v.ts >= ONLINE_MS) return err(409, 'phone offline');
-  const cmd = { id: randomBytes(8).toString('hex'), type: b.type, args };
-  const n = await c.kv.rpush(`cmds:${w.id}`, JSON.stringify(cmd));
-  await c.kv.expire(`cmds:${w.id}`, LIVE_TTL);
-  if (n > QUEUE_MAX) return err(503, 'phone busy'); // ponytail: the extra item still expires with the list
-  return json({ id: cmd.id }, 202);
+  if (!isOnline(c, w.view)) return err(409, 'phone offline');
+  const q = (await enqueue(c, w.id, b.type, args))!;
+  if (q.n > QUEUE_MAX) return err(503, 'phone busy'); // ponytail: the extra item still expires with the list
+  return json({ id: q.cmd.id }, 202);
+}
+
+async function postRes(c: Ctx, id: string, req: Request) {
+  const b = await body(req);
+  if (!obj(b) || typeof b.id !== 'string' || !/^[0-9a-f]{16}$/.test(b.id) || typeof b.text !== 'string') return err(422, 'bad result');
+  await c.kv.set(`res:${id}:${b.id}`, JSON.stringify({ ok: b.ok !== false, text: clean(b.text, 500) }), { ex: 60 });
+  return empty();
 }
 
 async function postImg(c: Ctx, req: Request) {
@@ -247,7 +298,7 @@ export async function handle(c: Ctx, req: Request, path: string[]): Promise<Resp
     case 'POST cmd': return command(c, req);
     case 'GET img': return getImg(c, path[1] ?? '');
   }
-  const phone = ['POST unpair', 'POST view', 'GET poll', 'POST img'].includes(route);
+  const phone = ['POST unpair', 'POST view', 'GET poll', 'POST img', 'POST res'].includes(route);
   if (!phone) return err(404, 'not found');
   const id = phoneAuth(c, req);
   if (!id) return err(401, 'bad device credentials');
@@ -255,6 +306,7 @@ export async function handle(c: Ctx, req: Request, path: string[]): Promise<Resp
     case 'POST unpair': return unpair(c, id);
     case 'POST view': return postView(c, id, req);
     case 'GET poll': return poll(c, id);
+    case 'POST res': return postRes(c, id, req);
     default: return postImg(c, req);
   }
 }

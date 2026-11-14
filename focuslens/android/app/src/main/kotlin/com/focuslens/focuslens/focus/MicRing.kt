@@ -12,6 +12,8 @@ import android.util.Log
  */
 class MicRing(seconds: Int) {
     val ring = PcmRing(seconds * BYTES_PER_SECOND)
+    /** Share of the last 4 s that was loud (speech context for the attention engine). */
+    val speech = SpeechMeter()
 
     @Volatile private var running = false
 
@@ -42,7 +44,7 @@ class MicRing(seconds: Int) {
             try {
                 while (running) {
                     val n = rec.read(chunk, 0, chunk.size)
-                    if (n > 0) { ring.add(chunk, n); listener?.invoke(chunk, n) } else if (n < 0) { Log.w(TAG, "read error $n"); break }
+                    if (n > 0) { ring.add(chunk, n); speech.feed(chunk, n); listener?.invoke(chunk, n) } else if (n < 0) { Log.w(TAG, "read error $n"); break }
                 }
             } finally {
                 runCatching { rec.stop() }
@@ -60,6 +62,7 @@ class MicRing(seconds: Int) {
     fun feed(chunk: ByteArray, n: Int) {
         if (!running) return
         ring.add(chunk, n)
+        speech.feed(chunk, n)
         listener?.invoke(chunk, n)
     }
 
@@ -69,6 +72,7 @@ class MicRing(seconds: Int) {
         thread?.join(500)
         thread = null
         ring.clear()
+        speech.reset()
     }
 
     fun snapshot(): ByteArray = ring.snapshot()

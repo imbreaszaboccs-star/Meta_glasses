@@ -12,6 +12,7 @@ import java.time.LocalDate
 import java.util.Collections
 import java.util.WeakHashMap
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -30,7 +31,8 @@ import org.json.JSONObject
 // Pure parts (unit tested in RemoteLinkTest)
 // ---------------------------------------------------------------------------------------------
 
-class RemoteCmd(val id: String, val type: String, val args: JSONObject)
+/** [reply]: a Meta AI connector call is waiting; the phone answers with POST /api/r/res after executing it. */
+class RemoteCmd(val id: String, val type: String, val args: JSONObject, val reply: Boolean = false)
 
 object RemoteProto {
     const val MAX_STATE_BYTES = 64 * 1024
@@ -41,7 +43,7 @@ object RemoteProto {
         val id = j.optString("id")
         val type = j.optString("type")
         if (id.isEmpty() || id.length > 100 || type.isEmpty()) return null
-        return RemoteCmd(id, type, j.optJSONObject("args") ?: JSONObject())
+        return RemoteCmd(id, type, j.optJSONObject("args") ?: JSONObject(), j.optBoolean("reply", false))
     }
 
     private fun str(a: JSONObject, k: String, max: Int): String? = (a.opt(k) as? String)?.takeIf { it.isNotBlank() && it.length <= max }
@@ -53,7 +55,8 @@ object RemoteProto {
             a.has("goal") && !a.isNull("goal") && a.opt("goal") !is String -> "bad goal"
             else -> null
         }
-        "stop_focus", "help", "pause_mic", "resume_mic", "review_load", "refresh" -> null
+        "stop_focus", "help", "pause_mic", "resume_mic", "review_load", "refresh", "last_hint" -> null
+        "add_note" -> if (str(a, "text", 300) == null) "bad text" else null
         "set_config" -> when {
             listOf("mode", "nudges", "wakeWord", "readAloud").none { a.has(it) } -> "nothing to change"
             a.has("mode") && (a.opt("mode") as? String) !in FocusConfig.MODES -> "bad mode"
@@ -238,9 +241,13 @@ class RemoteLink(private val app: Context, private val engine: FocusEngine) : En
 
     // -- commands --
 
+    /** What exec produced for a `reply` command: a ready text, or a deferred hint to wait for (help). */
+    private class Reply { var text: String? = null; var wait: CompletableDeferred<String?>? = null }
+
     private suspend fun handle(c: RemoteCmd) {
+        val rep = Reply()
         val err = RemoteProto.validate(c.type, c.args) ?: try {
-            exec(c)
+            exec(c, rep)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -253,11 +260,27 @@ class RemoteLink(private val app: Context, private val engine: FocusEngine) : En
         }
         dataDirty = true
         kick.trySend(true)
+        if (c.reply) scope.launch { sendReply(c, err, rep) } // help waits for its hint: must not block the next commands
+    }
+
+    private suspend fun sendReply(c: RemoteCmd, err: String?, r: Reply) {
+        var ok = err == null
+        val text = when {
+            err != null -> err.replaceFirstChar { it.uppercase() } + "."
+            c.type == "help" -> (withTimeoutOrNull(HELP_WAIT_MS) { r.wait?.await() })
+                .let { if (it.isNullOrBlank()) { ok = false; Strings.helpFailed } else it }
+            c.type == "start_focus" -> Strings.focusStarted
+            c.type == "stop_focus" -> Strings.focusStopped
+            r.text != null -> r.text!!
+            else -> "Done."
+        }
+        val body = JSONObject().put("id", c.id).put("ok", ok).put("text", RemoteProto.clip(text, 500)).toString()
+        if (post("/api/r/res", body) != 204) { delay(1_000); post("/api/r/res", body) }
     }
 
     private suspend fun <T> main(f: () -> T): T = withContext(Dispatchers.Main.immediate) { f() }
 
-    private suspend fun exec(c: RemoteCmd): String? {
+    private suspend fun exec(c: RemoteCmd, rep: Reply): String? {
         val a = c.args
         return when (c.type) {
             "start_focus" -> main {
@@ -274,7 +297,17 @@ class RemoteLink(private val app: Context, private val engine: FocusEngine) : En
                 }
             }
             "stop_focus" -> main { engine.stopFocus("glasses menu"); null }
-            "help" -> main { if (!engine.isRunning) "no focus block running" else { engine.help("glasses menu"); null } }
+            "help" -> main {
+                if (!engine.isRunning) "no focus block running"
+                else { if (c.reply) rep.wait = engine.helpForResult("glasses menu") else engine.help("glasses menu"); null }
+            }
+            "add_note" -> {
+                val t = a.getString("text").trim()
+                engine.inbox.add(t, "meta_ai")
+                rep.text = Strings.noteSaved(t)
+                null
+            }
+            "last_hint" -> { rep.text = main { engine.lastHintText() } ?: Strings.noHintYet; null }
             "pause_mic" -> main { if (!engine.isRunning) "no focus block running" else { engine.pauseMic(); null } }
             "resume_mic" -> main { if (!engine.isRunning) "no focus block running" else { engine.resumeMic(); null } }
             "set_config" -> main { engine.updateConfig(RemoteProto.configPatch(a)); null }
@@ -405,7 +438,7 @@ class RemoteLink(private val app: Context, private val engine: FocusEngine) : En
     private fun hudJson(): JSONObject {
         val screen = engine.hudScreen ?: HudScreen.Idle(compact = false, paused = false)
         val bmp = screen.cropBitmap()
-        return screen.toJson(bmp?.let { cropHash(it) })
+        return screen.toJson(bmp?.let { cropHash(it) }, engine.attention)
     }
 
     /** Hash of the uploaded crop, or null while it is still uploading (the view is republished when done). */
@@ -489,6 +522,7 @@ class RemoteLink(private val app: Context, private val engine: FocusEngine) : En
 
     private companion object {
         const val KEY_ID = "remoteDeviceId"
+        const val HELP_WAIT_MS = 20_000L
         const val KEY_SECRET = "remotePhoneSecret"
         val BACKOFF_S = longArrayOf(1, 2, 5, 10, 30)
         const val DEBOUNCE_MS = 1_000L

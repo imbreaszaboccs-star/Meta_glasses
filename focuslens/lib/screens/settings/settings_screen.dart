@@ -8,6 +8,7 @@ import '../../widgets/glasses_status.dart';
 import '../diagnostics/diagnostics_screen.dart';
 import '../onboarding/glasses_setup.dart';
 import '../onboarding/privacy_text.dart';
+import 'data_collection_screen.dart';
 import 'glasses_menu_section.dart';
 import 'integrations_section.dart';
 
@@ -133,6 +134,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 subtitle: const Text('Glasses notice when you drift.'),
                 value: settings.nudges,
                 onChanged: settings.setNudges,
+              ),
+              SwitchListTile(
+                title: const Text('Sound when dozing'),
+                subtitle: const Text('Also say it out loud when the glasses notice you nodding off.'),
+                value: settings.dozeSound,
+                onChanged: settings.setDozeSound,
+              ),
+              SwitchListTile(
+                title: const Text('Collect motion data'),
+                subtitle: const Text('Record head motion of each focus block on this phone, to train the activity model. Never uploaded.'),
+                value: settings.collect,
+                onChanged: settings.setCollect,
+              ),
+              ListTile(
+                title: const Text('Data collection'),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: () => _push(const DataCollectionScreen()),
               ),
               ListTile(
                 title: const Text('Memory length'),

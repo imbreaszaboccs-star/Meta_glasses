@@ -47,9 +47,17 @@ object Strings {
     fun backTo(goal: String) = "Back to: ${goal.take(40)}"
     fun anchor(goal: String) = "⚓ " + (if (goal.length > 28) goal.take(27) + "…" else goal)
 
+    // Meta AI connector answers (spoken back by Meta AI)
+    const val focusStarted = "Focus started."
+    const val focusStopped = "Focus stopped."
+    const val noHintYet = "No hint yet."
+    const val helpFailed = "I couldn't get a hint."
+    fun noteSaved(text: String) = "Saved: ${text.take(300)}"
+
     // proactive nudges
     const val nudgeKey = "💡 Key point just now"
     const val nudgeStuck = "Stuck? Try a smaller step"
+    const val nudgeDozing = "Eyes heavy? Take a breath"
     const val footerNudge = "pinch yes · ← no"
 
     // notification

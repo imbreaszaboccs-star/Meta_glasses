@@ -14,6 +14,24 @@
    - Přirozené pohyby hlavy nudge nikdy nespustí.
 5. **Meta AI connectory (Muse) fungují pro aplikace třetích stran, včetně hlasu „Hey Meta, ask FocusLens…“** (potvrzeno vývojářem z Mety). FocusLens bude mít vlastní connector jako druhý vstup vedle pinche.
 
+## Stav implementace (14. 11. 2026)
+
+Kód je hotový pro všechny fáze kromě FCM. **Nic z toho zatím neběželo na hardwaru ani na Vercelu**, proto je dalším krokem Fáze 0 a deploy.
+
+| Fáze | Stav | Kde |
+|---|---|---|
+| 0 spike | testovací stránka `/g/spike.html` (timery, pinch/Back, DeviceMotion Hz, latence, SSE, getUserMedia, TTS, Notification). Údery JS na pozadí jsou vidět ve Vercel logu jako `spike beat`. | `web/public/g/spike.*`, `web/app/api/spike/` |
+| 1 AI routes | port `ai.py`, `/api/ai/*`, testy | `web/lib/ai.ts`, `web/ai.test.ts` |
+| 2 relay + UI | Redis relay s HMAC auth (unpair = `gen:"dead"`), `/g` vykresluje HUD view model a gesta posílá jako příkaz `gesture`. Telefon: `HudView.kt`, polling místo SSE, crop přes `/api/r/img`. | `web/lib/relay.ts`, `web/public/g/app.js`, `RemoteLink.kt` |
+| 3a senzory | IMU 30 Hz, features, heuristika, `AttentionMachine`, `NudgePolicy` (L1 tečka / L2), sběrový režim + export | `Imu.kt`, `Attention.kt`, `NudgePolicy.kt`, `ImuPipeline.kt`, `ImuRecorder.kt` |
+| 3b model | MLP nad features běží v čistém Kotlinu (bez LiteRT), trénink přes `tools/train_activity.py` → `assets/activity_mlp.json`. Bez modelu běží heuristika. 1D-CNN přijde až s ≥ 10 h dat. | `ActivityClassifier.kt`, `tools/` |
+| 4 Muse | MCP `/api/mcp` (JSON-RPC, bez SSE), OAuth 2.1 + PKCE, kde login = párovací kód, bezstavově přes HMAC. Telefon odpovídá přes `/api/r/res`. | `web/lib/mcp.ts`, `RemoteLink.kt` |
+| 5 stretch | wake word přes `mwdat-speech` (`wakeEngine=dat`, default `vosk`). **FCM chybí:** potřebuje Firebase projekt (`google-services.json` + service account). | `DatWakeSpotter.kt` |
+
+Odchylky od textu níže: hint route nezapisuje view sama (zobrazí ho telefon), z `muse:{subject}` je bezstavový token `m.id.gen.mac`, MLP místo LiteRT. `backend/` se smaže po end-to-end testu na brýlích.
+
+**Deploy:** Vercel projekt s rootem `web/`, Upstash v `eu-central-1`, env proměnné podle `web/.env.example` (+ `RELAY_SECRET`), v telefonu `focuslens.api_url` v `local.properties`.
+
 ---
 
 ## 1. Co jsme zjistili

@@ -14,7 +14,14 @@ const glassesHeaders = [
 
 const config: NextConfig = {
   async rewrites() {
-    return [{ source: "/g", destination: "/g/index.html" }];
+    return [
+      { source: "/g", destination: "/g/index.html" },
+      // OAuth/MCP discovery for the Meta AI connector (lib/mcp.ts)
+      { source: "/.well-known/oauth-protected-resource/:rest*", destination: "/api/mcp/prm" },
+      { source: "/.well-known/oauth-protected-resource", destination: "/api/mcp/prm" },
+      { source: "/.well-known/oauth-authorization-server/:rest*", destination: "/api/mcp/asm" },
+      { source: "/.well-known/oauth-authorization-server", destination: "/api/mcp/asm" },
+    ];
   },
   async headers() {
     return [

@@ -23,6 +23,10 @@ class Settings extends ChangeNotifier {
   bool get readAloud => _p.getBool('readAloud') ?? false;
   bool get wakeWord => _p.getBool('wakeWord') ?? true;
   bool get nudges => _p.getBool('nudges') ?? true;
+  /// Speak the dozing nudge.
+  bool get dozeSound => _p.getBool('dozeSound') ?? false;
+  /// Data collection mode: record motion sessions on the phone.
+  bool get collect => _p.getBool('collect') ?? false;
   /// auto | phone | glasses: where a focus block listens (see FocusEngine.chooseAudio).
   String get audioSource => _p.getString('audioSource') ?? 'auto';
   int get retentionDays => _p.getInt('retentionDays') ?? 30;
@@ -39,6 +43,8 @@ class Settings extends ChangeNotifier {
         'wakeWord': wakeWord,
         'nudges': nudges,
         'audioSource': audioSource,
+        'dozeSound': dozeSound,
+        'collect': collect,
       };
 
   Future<void> _set(String key, Object value, {bool native = true}) async {
@@ -64,6 +70,8 @@ class Settings extends ChangeNotifier {
   Future<void> setReadAloud(bool v) => _set('readAloud', v);
   Future<void> setWakeWord(bool v) => _set('wakeWord', v);
   Future<void> setNudges(bool v) => _set('nudges', v);
+  Future<void> setDozeSound(bool v) => _set('dozeSound', v);
+  Future<void> setCollect(bool v) => _set('collect', v);
   Future<void> setAudioSource(String v) => _set('audioSource', v);
   Future<void> setRetentionDays(int v) => _set('retentionDays', v);
   Future<void> setDiagnosticsUnlocked(bool v) => _set('diagnostics', v, native: false);

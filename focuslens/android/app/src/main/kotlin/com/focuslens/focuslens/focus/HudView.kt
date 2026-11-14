@@ -12,7 +12,8 @@ fun HudScreen.cropBitmap(): Bitmap? = when (this) {
 }
 
 /** The HUD as the "view model" the web app on the glasses renders (strings are already localized/formatted). */
-fun HudScreen.toJson(cropHash: String?): JSONObject {
+/** [attention]: the quiet "you may be stuck" dot (nudge level 1). */
+fun HudScreen.toJson(cropHash: String?, attention: Boolean = false): JSONObject {
     val o = JSONObject()
     fun put(k: String, v: String?) { if (!v.isNullOrEmpty()) o.put(k, v) }
     when (this) {
@@ -52,5 +53,6 @@ fun HudScreen.toJson(cropHash: String?): JSONObject {
         is HudScreen.Message -> { o.put("s", "message"); put("title", title); put("footer", body ?: Strings.footerClose) }
         is HudScreen.Nudge -> { o.put("s", "nudge"); put("title", title); put("footer", Strings.footerNudge) }
     }
+    if (attention) o.put("attention", true)
     return o
 }

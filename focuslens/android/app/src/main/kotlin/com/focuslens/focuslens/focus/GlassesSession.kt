@@ -34,8 +34,11 @@ import com.meta.wearable.dat.motion.types.MotionSample
 import com.meta.wearable.dat.motion.types.MotionSamplingRate
 import com.meta.wearable.dat.motion.types.MotionSource
 import com.meta.wearable.dat.motion.types.MotionState
+import com.meta.wearable.dat.speech.Speech
+import com.meta.wearable.dat.speech.addSpeech
 import java.io.ByteArrayOutputStream
 import kotlin.math.asin
+import kotlin.math.atan2
 import kotlin.math.sqrt
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -78,13 +81,19 @@ class GlassesSession(
     private val onHead: (Boolean?) -> Unit = {},
     /** Glasses microphone: PCM16 16 kHz mono, any chunk size, on an IO thread. Must not block. */
     private val onAudio: (ByteArray, Int) -> Unit = { _, _ -> },
+    /** Every motion sample at 30 Hz (t = elapsedRealtime-based ms), on the main thread: hand it off, don't compute here. */
+    private val onImu: (ImuSample) -> Unit = {},
+    /** Non-null = attach the on-device speech capability (needs the glasses microphone permission) and report every (partial or final) text. */
+    private val onSpeech: ((String, Boolean) -> Unit)? = null,
 ) {
     private var session: DeviceSession? = null
     private var inputs: Inputs? = null
     private var display: Display? = null
     private var camera: Camera? = null
     private var motion: Motion? = null
+    private var speech: Speech? = null
     private var headDown: Boolean? = null
+    private var tOffset = Long.MIN_VALUE // elapsedRealtime - device clock, from the first sample
     private val jobs = mutableListOf<Job>()
 
     private var wantDisplay = true
@@ -157,6 +166,7 @@ class GlassesSession(
         scope.launch {
             if (wantCamera && camera == null && display == null) openCamera(s)
             if (wantDisplay && display == null) attachDisplay(s)
+            if (onSpeech != null && speech == null) attachSpeech(s, onSpeech)
             if (motion == null) attachMotion(s) // no ordering constraint (BirdSpotter); after camera + display anyway
             publish(GlassesPhase.READY, null)
             // Resuming from PAUSED: the HUD keeps its handle but lost its content.
@@ -284,10 +294,25 @@ class GlassesSession(
         return ByteArrayOutputStream().also { out.compress(Bitmap.CompressFormat.JPEG, 85, it) }.toByteArray()
     }
 
+    // -- speech (wake word on the glasses, text only) --
+
+    private fun attachSpeech(s: DeviceSession, sink: (String, Boolean) -> Unit) {
+        s.addSpeech().fold(
+            onSuccess = { sp ->
+                speech = sp
+                jobs += scope.launch { sp.transcriptions.collect { r -> r?.let { sink(it.text, it.isFinal) } } }
+                jobs += scope.launch { sp.state.collect { log("speech", "$it") } }
+                jobs += scope.launch { sp.errors.collect { err -> err?.let { log("error", "speech: ${it.description}") } } }
+                sp.start().onFailure { e, _ -> log("error", "speech start: ${e.description}") }
+            },
+            onFailure = { e, _ -> log("error", "addSpeech: ${e.description}") },
+        )
+    }
+
     // -- motion (head pitch) --
 
     private fun attachMotion(s: DeviceSession) {
-        s.addMotion(MotionConfiguration(samplingRate = MotionSamplingRate.HZ_5)).fold(
+        s.addMotion(MotionConfiguration(samplingRate = MotionSamplingRate.HZ_30)).fold(
             onSuccess = { m ->
                 motion = m
                 jobs += scope.launch { m.samples.collect(::onMotion) }
@@ -312,12 +337,28 @@ class GlassesSession(
         // Axes as in BirdSpotter's GlassesAim: y = up, z = back towards the wearer, so z > 0 = nose pitched down.
         // ponytail: axis sign is NOT verified on hardware; if nudges never/always see "head down", flip the sign or the knobs below.
         val elevation = -Math.toDegrees(asin((a.z / g).toDouble().coerceIn(-1.0, 1.0)))
+        emitImu(sample, a.x.toFloat(), a.y.toFloat(), a.z.toFloat(), elevation.toFloat())
         // ponytail: calibration knobs. Down below -DOWN_DEG, back up above -UP_DEG (hysteresis between).
         setHead(when {
             elevation < -DOWN_DEG -> true
             elevation > -UP_DEG -> false
             else -> headDown ?: return
         })
+    }
+
+    /** Pitch/roll come from gravity (same axes as the head signal); yaw from the orientation quaternion when there is one. */
+    private fun emitImu(sample: MotionSample, ax: Float, ay: Float, az: Float, pitch: Float) {
+        val ms = sample.timestampNs / 1_000_000
+        if (tOffset == Long.MIN_VALUE) tOffset = SystemClock.elapsedRealtime() - ms
+        val gyro = sample.gyroscope
+        val q = sample.orientation
+        val yaw = if (q == null) 0.0 else {
+            val x = q.x.toDouble(); val y = q.y.toDouble(); val z = q.z.toDouble(); val w = q.w.toDouble()
+            Math.toDegrees(atan2(2 * (w * y + x * z), 1 - 2 * (x * x + y * y)))
+        }
+        onImu(ImuSample(ms + tOffset, ax, ay, az,
+            gyro?.x?.toFloat() ?: 0f, gyro?.y?.toFloat() ?: 0f, gyro?.z?.toFloat() ?: 0f,
+            pitch, Math.toDegrees(atan2(ax.toDouble(), ay.toDouble())).toFloat(), yaw.toFloat()))
     }
 
     private fun setHead(down: Boolean?) {
@@ -369,6 +410,8 @@ class GlassesSession(
         display = null
         camera = null
         motion = null
+        speech = null
+        tOffset = Long.MIN_VALUE
         setHead(null)
         session = null
     }
