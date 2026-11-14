@@ -6,6 +6,9 @@ Prices are USD per 1M tokens, standard paid tier. Re-check before production, be
 
 ## What FocusLens needs from a model
 
+
+
+
 | Use | Input → output | Hard requirement |
 |---|---|---|
 | **Hint** (core, on every pinch) | JPEG + 180 s audio → 1 sentence + card JSON | **latency** (< 4 s end-to-end goal), native audio, vision, structured output, Czech |
