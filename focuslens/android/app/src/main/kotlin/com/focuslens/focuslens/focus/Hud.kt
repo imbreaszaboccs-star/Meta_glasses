@@ -27,7 +27,8 @@ sealed class HudScreen {
     /** Cards panel (swipe up): [selected] indexes [rows]; at most 4 rows are drawn around it. */
     data class Blocks(val rows: List<BlockRow>, val selected: Int) : HudScreen()
     data class BlockDetail(val title: String, val step: String, val correction: String, val formula: Bitmap?, val tex: String = "") : HudScreen()
-    data class Message(val title: String, val body: String?) : HudScreen()
+    /** [passive]: a quiet confirmation (session start, mic on/off). Shown where a HUD already is, never worth attaching the DAT display for. */
+    data class Message(val title: String, val body: String?, val passive: Boolean = false) : HudScreen()
     /** Proactive offer; pinch = yes, LEFT/BACK = no, hides itself after a few seconds. */
     data class Nudge(val title: String, val kind: NudgeKind) : HudScreen()
 }

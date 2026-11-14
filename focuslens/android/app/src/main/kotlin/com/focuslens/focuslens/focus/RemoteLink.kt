@@ -271,6 +271,9 @@ class RemoteLink(private val app: Context, private val engine: FocusEngine) : En
             if (RemoteProto.validate(c.type, c.args) == null) main { engine.onWebSeen(c.args.getBoolean("visible")) }
             return
         }
+        // A web-app command (MCP calls are the `reply` ones) proves the web app is on screen right now. Without this the
+        // first pinch after opening it arrives before the 20 s heartbeat and the phone covers the web app with the DAT display.
+        if (!c.reply) main { engine.onWebSeen(true) }
         val rep = Reply()
         val err = RemoteProto.validate(c.type, c.args) ?: try {
             exec(c, rep)

@@ -113,7 +113,10 @@ async function poll() {
 }
 
 function applyState(d) {
+  const wasOnline = phoneOnline;
   phoneOnline = !!d.phone_online;
+  // tell the phone at once (not after the 20 s heartbeat) that we draw the HUD, or its first hint goes to the DAT display
+  if (phoneOnline && !wasOnline && document.visibilityState === 'visible') seen(true);
   S = d.state && typeof d.state === 'object' ? d.state : null;
   stateSig = JSON.stringify(S);
   for (const a of Array.isArray(d.acks) ? d.acks : []) {

@@ -547,8 +547,8 @@ export class Gemini {
   async tts(o: { model: string; voice: string; text: string }): Promise<Buffer> {
     const resp = await this.client.models.generateContent({
       model: o.model,
-      // Fixed delivery style so every answer sounds like the same calm assistant.
-      contents: `Say in a calm, warm, steady voice at a moderate pace: ${o.text}`,
+      // Text only: a style instruction in front ("Say calmly: …") gets read out loud by the Flash-Lite TTS model.
+      contents: o.text,
       config: {
         responseModalities: ["AUDIO"],
         speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: o.voice } } },

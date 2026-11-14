@@ -362,7 +362,7 @@ class FocusEngine(private val app: Context) {
         startMic()
         attachGlasses()
         speaker.warmUp()
-        if (phase == Phase.IDLE) showMessage(Strings.sessionStarted, Strings.sessionStartedHint, autoHideMs = 3_000)
+        if (phase == Phase.IDLE) showMessage(Strings.sessionStarted, Strings.sessionStartedHint, autoHideMs = 3_000, passive = true)
         tickJob = scope.launch { while (isActive) { delay(1_000); nudgeTick(); timePulseTick(); displayTick(); emitStatus() } }
         log("focus", "started ${r.mode}")
         emitStatus()
@@ -489,7 +489,7 @@ class FocusEngine(private val app: Context) {
         micPaused = true
         nudges.onMicPaused()
         log("focus", "mic paused (buffer wiped)")
-        if (phase == Phase.IDLE) showMessage(Strings.micPausedMsg, null, autoHideMs = 2_000)
+        if (phase == Phase.IDLE) showMessage(Strings.micPausedMsg, null, autoHideMs = 2_000, passive = true)
         emitStatus()
     }
 
@@ -498,7 +498,7 @@ class FocusEngine(private val app: Context) {
         micPaused = false
         startMic()
         log("focus", "mic resumed")
-        if (phase == Phase.IDLE) showMessage(Strings.micOnMsg, null, autoHideMs = 2_000)
+        if (phase == Phase.IDLE) showMessage(Strings.micOnMsg, null, autoHideMs = 2_000, passive = true)
         emitStatus()
     }
 
@@ -1429,11 +1429,11 @@ class FocusEngine(private val app: Context) {
         emitStatus()
     }
 
-    private fun showMessage(title: String, body: String?, autoHideMs: Long) {
+    private fun showMessage(title: String, body: String?, autoHideMs: Long, passive: Boolean = false) {
         panelJob?.cancel(); panel = null
         phase = Phase.MESSAGE
         lastMessage = title
-        showHud(HudScreen.Message(title, body))
+        showHud(HudScreen.Message(title, body, passive))
         scheduleHide(autoHideMs)
         emitStatus()
     }
@@ -1469,10 +1469,12 @@ class FocusEngine(private val app: Context) {
 
     /** `web_seen` from the glasses web app (not logged). Visible = it draws everything, so DAT lets go at once. */
     fun onWebSeen(visible: Boolean) {
+        val was = web.visible
         web.seen(visible)
+        if (was != web.visible) log("display", "web app ${if (visible) "visible" else "hidden"}")
         if (config.hudSource != "web") return
         if (visible) glasses?.let(::releaseOnDemand)
-        else currentScreen?.takeIf { run != null && it !is HudScreen.Idle }?.let(::syncOnDemand)
+        else currentScreen?.takeIf { run != null && !it.quiet() }?.let(::syncOnDemand)
     }
 
     /** Idle with the web app hidden: release shortly. Anything else while it is hidden: attach and draw there. */
@@ -1480,10 +1482,13 @@ class FocusEngine(private val app: Context) {
         val g = glasses ?: return
         if (!displayCapable || config.hudSource != "web") return
         if (web.visible) return releaseOnDemand(g)
-        if (screen is HudScreen.Idle) {
+        if (screen.quiet()) {
+            // Passive messages never attach (attaching mid session start raced the camera stream and dropped the glasses);
+            // they still show on a display that is already up.
+            if (screen !is HudScreen.Idle && g.hasDisplay) g.show(Hud.render(screen))
             if (g.hasDisplay && releaseJob?.isActive != true) releaseJob = scope.launch {
                 delay(RELEASE_DELAY_MS)
-                if (currentScreen is HudScreen.Idle) releaseOnDemand(g)
+                if (currentScreen?.quiet() == true) releaseOnDemand(g)
             }
             return
         }
@@ -1491,6 +1496,9 @@ class FocusEngine(private val app: Context) {
         if (!g.hasDisplay) { log("display", "on-demand attach"); g.ensureDisplay() }
         g.show(Hud.render(screen)) // no-op until the display is STARTED; onDisplayReady re-renders then
     }
+
+    /** Nothing that justifies surfacing the DAT display: idle or a passive confirmation. */
+    private fun HudScreen.quiet() = this is HudScreen.Idle || (this is HudScreen.Message && passive)
 
     private fun releaseOnDemand(g: GlassesSession) {
         releaseJob?.cancel()
@@ -1503,7 +1511,7 @@ class FocusEngine(private val app: Context) {
         if (config.hudSource != "web" || !displayCapable) return
         val s = currentScreen ?: return
         if (web.visible) { if (g.hasDisplay) releaseOnDemand(g) }
-        else if (s !is HudScreen.Idle && !g.hasDisplay) syncOnDemand(s)
+        else if (!s.quiet() && !g.hasDisplay) syncOnDemand(s)
     }
 
     private fun rerender() {
