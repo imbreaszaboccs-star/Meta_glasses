@@ -94,6 +94,7 @@ class FocusEngine(private val app: Context) {
         var goalAsked = false  // the "what are we working on?" prompt is shown at most once
         var situation = ""     // latest situation detected by the AI (lecture | homework | desk | reading | other)
         var lastPulseMin = 0   // last 30-min time-blindness milestone shown on the HUD
+        val startedRealtime = SystemClock.elapsedRealtime()  // monotonic, for the time pulse
     }
     private var run: Run? = null
     private var mic: MicRing? = null
