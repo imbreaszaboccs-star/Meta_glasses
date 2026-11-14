@@ -1,7 +1,7 @@
 # 1. Holistic and Connected Concept: FocusLens
 
 **Main Pitch:** „Phones distract people with ADHD. Glasses give them back control. FocusLens transforms the visual and audio chaos in front of you into a single next step.“
-
+xc
 ## Problem: The Mobile Phone Trap, Loss of Context, and Decision Paralysis
 People with ADHD, dyslexia, or overwhelmed students struggle with three main obstacles:
 1. **Zoning out (Attention Blink):** Momentary loss of focus during a lecture or conversation.
