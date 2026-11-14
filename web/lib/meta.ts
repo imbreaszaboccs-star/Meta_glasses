@@ -28,7 +28,7 @@ function parse(raw: string): Obj {
 
 function userContext(o: Obj) {
   return {
-    locale: langCode(str(o.locale, Infinity, "cs")),
+    locale: langCode(str(o.locale, Infinity, "en")),
     goal: clean(str(o.goal, 1000), 200),
     mistakes: cleanList(list(o.mistakes, 0, 10, any), 120),
   };
@@ -67,16 +67,16 @@ export function checkMeta(raw: string) {
 
 export function dumpMeta(raw: string) {
   const o = parse(raw);
-  str(o.locale, Infinity, "cs");
+  const locale = langCode(str(o.locale, Infinity, "en"));
   const kind = o.kind ?? "task";
   if (kind !== "task" && kind !== "goal") bad();
-  return { kind: kind as "task" | "goal" };
+  return { kind: kind as "task" | "goal", locale };
 }
 
 export function reviewIn(body: unknown) {
   const o = obj(body);
   return {
-    locale: langCode(str(o.locale, Infinity, "cs")),
+    locale: langCode(str(o.locale, Infinity, "en")),
     items: list(o.items, 1, 20, (x) => {
       const i = obj(x);
       return {

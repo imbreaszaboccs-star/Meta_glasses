@@ -23,7 +23,7 @@ fun HudScreen.toJson(cropHash: String?, attention: Boolean = false): JSONObject 
         is HudScreen.Thinking -> { o.put("s", "thinking"); put("title", text) }
         is HudScreen.Hint -> {
             o.put("s", "hint")
-            if (goal.isNotBlank()) put("anchor", Strings.anchor(goal))
+            put("anchor", head); put("intent", intent)
             put("recap", recap); put("text", text); put("crop", cropHash); put("formula", tex)
             if (total > 1) put("progress", "$index/$total")
             put("footer", Strings.footerNext)

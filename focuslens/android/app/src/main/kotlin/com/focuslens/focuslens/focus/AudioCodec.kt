@@ -19,13 +19,17 @@ object AudioCodec {
      * PCM16 mono → OGG/Opus (~24 kbps, 180 s ≈ 0.5 MB) using the platform encoder.
      * Falls back to WAV (5.8 MB for 180 s) if the device's encoder or muxer refuses; the backend accepts both.
      */
-    fun encode(pcm: ByteArray, sampleRate: Int, tmpDir: File, bitrate: Int = 24_000): EncodedAudio =
-        try {
-            EncodedAudio(opus(pcm, sampleRate, tmpDir, bitrate), "audio/ogg", "ogg")
+    fun encode(pcm: ByteArray, sampleRate: Int, tmpDir: File, bitrate: Int = 24_000): EncodedAudio {
+        if (!opusBroken) try {
+            return EncodedAudio(opus(pcm, sampleRate, tmpDir, bitrate), "audio/ogg", "ogg")
         } catch (e: Exception) {
-            Log.w(TAG, "opus encode failed, sending WAV: $e")
-            EncodedAudio(wav(pcm, sampleRate), "audio/wav", "wav")
+            opusBroken = true // e.g. motorola edge 50 fusion: the encoder stalls; don't pay the timeout on every hint
+            Log.w(TAG, "opus encode failed, WAV from now on: $e")
         }
+        return EncodedAudio(wav(pcm, sampleRate), "audio/wav", "wav")
+    }
+
+    @Volatile private var opusBroken = false
 
     fun wav(pcm: ByteArray, sampleRate: Int): ByteArray {
         val header = ByteBuffer.allocate(44).order(ByteOrder.LITTLE_ENDIAN).apply {
@@ -55,7 +59,7 @@ object AudioCodec {
             var inPos = 0
             var inputDone = false
             val info = MediaCodec.BufferInfo()
-            val deadline = System.nanoTime() + 10_000_000_000L
+            val deadline = System.nanoTime() + 4_000_000_000L // a healthy encoder needs < 1 s for 150 s
             while (true) {
                 check(System.nanoTime() < deadline) { "opus encode timeout" }
                 if (!inputDone) {

@@ -34,8 +34,10 @@ class HintResponse(
     val nextStep: String, val card: JSONObject, val serverMs: Long?,
     val formula: String = "", val formulaPng: ByteArray? = null,
     val steps: List<String> = listOf(nextStep), val focusBox: IntArray? = null, val mistake: String = "",
-    /** Lecture only: what was just explained (<= 25 words), "" otherwise. */
+    /** intent=recap only: what was just said that matters (<= 25 words), "" otherwise. */
     val recap: String = "",
+    /** What the decision tree picked: answer | fix | recap | next_step | summary | start ("" from an older backend). */
+    val intent: String = "",
 )
 
 class CheckResponse(
@@ -86,6 +88,7 @@ object HintClient {
                 json.optString("formula").trim(), decodePng(json.optString("formula_png")),
                 strings(json.optJSONArray("steps")).take(4).ifEmpty { listOf(step) },
                 box(json), json.optString("mistake").trim(), json.optString("recap").trim(),
+                json.optString("intent").trim(),
             )
         }
     }

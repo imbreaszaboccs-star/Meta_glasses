@@ -21,7 +21,10 @@ sealed class HudScreen {
     data class Idle(val dot: Boolean = false) : HudScreen()
     data class Thinking(val text: String) : HudScreen()
     /** [index] is 1-based position in the local history, [total] its size. */
-    data class Hint(val text: String, val index: Int, val total: Int, val formula: Bitmap? = null, val crop: Bitmap? = null, val goal: String = "", val tex: String = "", val recap: String = "") : HudScreen()
+    data class Hint(val text: String, val index: Int, val total: Int, val formula: Bitmap? = null, val crop: Bitmap? = null, val goal: String = "", val tex: String = "", val recap: String = "", val intent: String = "") : HudScreen() {
+        /** "Next step · ⚓ goal": what kind of answer this is, so the user knows what they got. */
+        val head: String get() = listOf(Strings.intentLabel(intent), if (goal.isNotBlank()) Strings.anchor(goal) else "").filter { it.isNotEmpty() }.joinToString(" · ")
+    }
     /** A micro-step quest: [index] is 0-based; [feedback] = what the last check said (not done yet). */
     data class Quest(val step: String, val index: Int, val total: Int, val goal: String, val feedback: String?, val crop: Bitmap?, val formula: Bitmap?, val tex: String = "") : HudScreen()
     /** Cards panel (swipe up): [selected] indexes [rows]; at most 4 rows are drawn around it. */
@@ -57,7 +60,7 @@ object Hud {
     private fun hint(screen: HudScreen.Hint): ContentScope.() -> Unit = {
         val words = screen.text.trim().split(Regex("\\s+")).size
         flexBox(direction = Direction.COLUMN, gap = 16, padding = 28, background = FlexBoxBackground.CARD) {
-            if (screen.goal.isNotBlank()) text(Strings.anchor(screen.goal), style = TextStyle.META, color = TextColor.SECONDARY)
+            if (screen.head.isNotEmpty()) text(screen.head, style = TextStyle.META, color = TextColor.SECONDARY)
             if (screen.recap.isNotBlank()) text(screen.recap, style = TextStyle.BODY, color = TextColor.SECONDARY)
             text(screen.text, style = if (words <= 12 && screen.formula == null && screen.crop == null) TextStyle.HEADING else TextStyle.BODY)
             pictures(screen.crop, screen.formula)

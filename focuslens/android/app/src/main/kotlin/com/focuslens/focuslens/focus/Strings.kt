@@ -47,10 +47,14 @@ object Strings {
     fun backTo(goal: String) = "Back to: ${goal.take(40)}"
     fun anchor(goal: String) = "⚓ " + (if (goal.length > 28) goal.take(27) + "…" else goal)
     fun timePulse(mins: Int) = "$mins min in session"
+    fun intentLabel(intent: String) = when (intent) {
+        "answer" -> "Answer"; "fix" -> "Fix this"; "recap" -> "Just said"
+        "next_step" -> "Next step"; "summary" -> "Key idea"; "start" -> "Start here"; else -> ""
+    }
 
     // Meta AI connector answers (spoken back by Meta AI)
     const val sessionStarted = "Session started"
-    const val sessionStartedHint = "pinch = help · capture = save"
+    const val sessionStartedHint = "pinch = help now · swipe → = save for later"
     const val micPausedMsg = "Mic paused"
     const val micOnMsg = "Mic on"
     const val focusStarted = "Session started."

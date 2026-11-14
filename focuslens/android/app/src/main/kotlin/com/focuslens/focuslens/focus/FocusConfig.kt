@@ -14,7 +14,9 @@ data class FocusConfig(
     val wakeWord: Boolean = true,          // "hey lens" on the phone mic (Vosk, on-device)
     val nudges: Boolean = true,            // proactive "key point" / "stuck" nudges on the HUD
     val audioSource: String = "auto",      // auto | phone | glasses (see FocusEngine.chooseAudio)
-    val hudSource: String = "web",         // web | dat (HUD drawn by the web app on the glasses, or via DAT sendContent)
+    // dat | web. dat: the phone draws the session HUD (DAT display, attached at session start). The glasses hide the web app
+    // while a DAT session (inputs/camera) runs (seen on hardware 2026-11-14), so "web" only works without a DAT session.
+    val hudSource: String = "dat",
     val dozeSound: Boolean = false,        // speak the dozing nudge
     val wakeEngine: String = "vosk",       // vosk (phone mic, on-device) | dat (glasses on-device speech, mwdat-speech)
     val collect: Boolean = false,          // data collection mode: record IMU sessions to filesDir/imu (never leaves the phone)
@@ -23,7 +25,7 @@ data class FocusConfig(
         .putString("mode", mode).putString("language", language).putInt("bufferSec", bufferSec)
         .putString("keepAudio", keepAudio).putInt("hudTimeoutSec", hudTimeoutSec)
         .putBoolean("readAloud", readAloud).putInt("retentionDays", retentionDays).putBoolean("wakeWord", wakeWord).putBoolean("nudges", nudges)
-        .putString("audioSource", audioSource).putString("hudSource", hudSource)
+        .putString("audioSource", audioSource).putString("hudSource2", hudSource)
         .putString("wakeEngine", wakeEngine).putBoolean("dozeSound", dozeSound).putBoolean("collect", collect).apply()
 
     fun merge(m: Map<*, *>?): FocusConfig {
@@ -73,7 +75,7 @@ data class FocusConfig(
             wakeWord = p.getBoolean("wakeWord", true),
             nudges = p.getBoolean("nudges", true),
             audioSource = p.getString("audioSource", null) ?: "auto",
-            hudSource = p.getString("hudSource", null) ?: "web",
+            hudSource = p.getString("hudSource2", null) ?: "dat", // new key: old saved "web" values are ignored
             wakeEngine = p.getString("wakeEngine", null) ?: "vosk",
             dozeSound = p.getBoolean("dozeSound", false),
             collect = p.getBoolean("collect", false),

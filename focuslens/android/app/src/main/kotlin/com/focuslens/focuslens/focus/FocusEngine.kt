@@ -114,7 +114,7 @@ class FocusEngine(private val app: Context) {
 
     // -- hint state machine --
     enum class Phase { IDLE, THINKING, SHOWN, MESSAGE, QUEST, CHECKING, DUMP, NUDGE }
-    private data class Shown(val text: String, val cardId: String, val formula: Bitmap? = null, val crop: Bitmap? = null, val tex: String = "", val recap: String = "")
+    private data class Shown(val text: String, val cardId: String, val formula: Bitmap? = null, val crop: Bitmap? = null, val tex: String = "", val recap: String = "", val intent: String = "")
 
     // -- quest: a hint with ≥ 2 micro-steps; pinch = "done, check me" --
     private class Quest(val cardId: String, val title: String, val steps: List<String>) {
@@ -631,7 +631,7 @@ class FocusEngine(private val app: Context) {
                 Phase.THINKING -> showHud(HudScreen.Thinking(Strings.stillThinking))
                 else -> dismiss()
             }
-            Gesture.RIGHT -> next()
+            Gesture.RIGHT -> if (phase == Phase.IDLE) bookmark("swipe") else next() // idle: → = save for later, pinch = answer now
             Gesture.LEFT -> prev()
             Gesture.BACK -> if (phase == Phase.THINKING) cancelHint() else dismiss()
             Gesture.CAPTURE -> bookmark("capture")
@@ -934,7 +934,9 @@ class FocusEngine(private val app: Context) {
         if (res.mistake.isNotBlank()) mistakes.add(res.mistake)
         val situation = res.card.optString("situation").ifBlank { config.mode }
         run?.situation = situation
-        val isQuest = situation != "lecture" && (res.steps.size >= 2 || (res.steps.size == 1 && situation in setOf("homework", "desk")))
+        // a quest (pinch = camera checks the step) only when the user has to DO something: not for an answer, recap, summary
+        val isQuest = res.intent in setOf("next_step", "fix", "") && situation != "lecture" &&
+            (res.steps.size >= 2 || (res.steps.size == 1 && situation in setOf("homework", "desk")))
         if (!isQuest) simPhoto = null
         withContext(Dispatchers.IO) {
             cards.update(id) { c ->
@@ -952,7 +954,7 @@ class FocusEngine(private val app: Context) {
                 c.remove("request")
             }
         }
-        history += Shown(res.nextStep, id, formula, crop, res.formula, res.recap)
+        history += Shown(res.nextStep, id, formula, crop, res.formula, res.recap, res.intent)
         while (history.size > HISTORY) history.removeAt(0)
         recent += JSONObject().put("situation", res.card.optString("situation").ifBlank { config.mode })
             .put("title", res.card.optString("title")).put("step", res.nextStep)
@@ -1424,7 +1426,7 @@ class FocusEngine(private val app: Context) {
         val h = history.getOrNull(viewIndex) ?: return
         phase = Phase.SHOWN
         lastMessage = null
-        showHud(HudScreen.Hint(h.text, viewIndex + 1, history.size, h.formula, h.crop, run?.goal.orEmpty(), h.tex, h.recap))
+        showHud(HudScreen.Hint(h.text, viewIndex + 1, history.size, h.formula, h.crop, run?.goal.orEmpty(), h.tex, h.recap, h.intent))
         scheduleHide(config.hudTimeoutSec * 1_000L)
         emitStatus()
     }

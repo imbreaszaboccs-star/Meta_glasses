@@ -379,12 +379,13 @@ class GlassesSession(
             onSuccess = { d ->
                 display = d
                 displayJob = scope.launch {
+                    var began = false // the flow starts at STOPPED: only a STOPPED after STARTING/STARTED means the display is gone
                     d.state.collect { st ->
                         log("display", "$st")
                         when (st) {
-                            DisplayState.STARTED -> { displayStarted = true; publish(); onDisplayReady() }
-                            DisplayState.STOPPED, DisplayState.CLOSED -> if (display === d) { display = null; displayStarted = false; publish() }
-                            else -> Unit
+                            DisplayState.STARTED -> { began = true; displayStarted = true; publish(); onDisplayReady() }
+                            DisplayState.STOPPED, DisplayState.CLOSED -> if (began && display === d) { display = null; displayStarted = false; publish() }
+                            else -> began = true
                         }
                     }
                 }
