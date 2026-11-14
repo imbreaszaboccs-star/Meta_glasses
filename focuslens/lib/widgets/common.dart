@@ -186,30 +186,8 @@ String elapsed(Duration d) {
 
 const modeNames = {'auto': 'Auto', 'lecture': 'Lecture', 'homework': 'Homework', 'desk': 'Desk'};
 
-const modeHelp = {
-  'auto': 'Figures out by itself whether you are in a lecture, doing homework or stuck at your desk.',
-  'lecture': 'Tells you what was just said and what to write down.',
-  'homework': 'Finds the first mistake in your work, or the next small step.',
-  'desk': 'Picks the smallest first thing to do when you can\'t get started.',
-};
-
-/// Auto / Lecture / Homework / Desk picker.
-class ModePicker extends StatelessWidget {
-  const ModePicker({super.key, required this.value, required this.onChanged});
-  final String value;
-  final ValueChanged<String> onChanged;
-
-  @override
-  Widget build(BuildContext context) => SizedBox(
-        width: double.infinity,
-        child: SegmentedButton<String>(
-          showSelectedIcon: false,
-          segments: [for (final e in modeNames.entries) ButtonSegment(value: e.key, label: Text(e.value))],
-          selected: {value},
-          onSelectionChanged: (s) => onChanged(s.first),
-        ),
-      );
-}
+/// Buffer length in minutes for display: 150 s -> "2.5", 120 s -> "2".
+String bufferLabel(int sec) => sec % 60 == 0 ? '${sec ~/ 60}' : (sec / 60).toStringAsFixed(1);
 
 const situationNames = {
   'lecture': 'Lecture',

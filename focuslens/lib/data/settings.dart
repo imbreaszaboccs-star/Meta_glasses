@@ -81,13 +81,14 @@ class Settings extends ChangeNotifier {
   /// The glasses menu changes these natively. Adopt a value only when the native side *changed* it (a stale
   /// status event must never undo a toggle made here), without echoing it back.
   void adoptNative(Map<String, dynamic> c) {
-    final now = {for (final k in const ['mode', 'nudges', 'wakeWord', 'readAloud']) k: c[k]};
+    final now = {for (final k in toConfig().keys) k: c[k]};
     final prev = _seen;
     _seen = now;
     if (prev == null || c.isEmpty) return;
     final mine = toConfig();
     for (final k in now.keys) {
-      final v = now[k];
+      var v = now[k];
+      if (v is num && mine[k] is int) v = v.toInt();
       if (v != null && v != prev[k] && v != mine[k]) _set(k, v, native: false);
     }
   }

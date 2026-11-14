@@ -13,12 +13,10 @@ class DataCollectionScreen extends StatefulWidget {
 }
 
 class _DataCollectionScreenState extends State<DataCollectionScreen> {
-  static const _labels = ['board', 'notes', 'switching', 'still', 'looking_around', 'nod', 'walking'];
-  String? _label;
+  static const labels = ['board', 'notes', 'switching', 'still', 'looking_around', 'nod', 'walking'];
   String? _message;
 
   Future<void> _set(String? l) async {
-    setState(() => _label = l);
     await context.app.focus.setImuLabel(l);
   }
 
@@ -35,8 +33,10 @@ class _DataCollectionScreenState extends State<DataCollectionScreen> {
       appBar: AppBar(title: const Text('Data collection')),
       body: SafeArea(
         child: ListenableBuilder(
-          listenable: settings,
-          builder: (context, _) => ListView(
+          listenable: Listenable.merge([settings, context.app.focus.status]),
+          builder: (context, _) {
+            final label = context.app.focus.status.value.imuLabel;
+            return ListView(
             padding: const EdgeInsets.all(Gap.l),
             children: [
               Text(
@@ -46,23 +46,24 @@ class _DataCollectionScreenState extends State<DataCollectionScreen> {
                 style: text.bodyMedium,
               ),
               const SizedBox(height: Gap.m),
-              Text('Now: ${_label ?? 'no label'}', style: text.titleMedium),
+              Text('Now: ${label ?? 'no label'}', style: text.titleMedium),
               const SizedBox(height: Gap.s),
               Wrap(
                 spacing: Gap.s,
                 runSpacing: Gap.s,
                 children: [
-                  for (final l in _labels)
-                    ChoiceChip(label: Text(l.replaceAll('_', ' ')), selected: _label == l, onSelected: (_) => _set(l)),
+                  for (final l in labels)
+                    ChoiceChip(label: Text(l.replaceAll('_', ' ')), selected: label == l, onSelected: (_) => _set(l)),
                 ],
               ),
               const SizedBox(height: Gap.m),
-              OutlinedButton(onPressed: _label == null ? null : () => _set(null), child: const Text('Clear label')),
+              OutlinedButton(onPressed: label == null ? null : () => _set(null), child: const Text('Clear label')),
               const SizedBox(height: Gap.l),
               FilledButton(onPressed: _export, child: const Text('Export')),
               if (_message != null) Padding(padding: const EdgeInsets.only(top: Gap.s), child: Text(_message!, style: text.bodyMedium)),
             ],
-          ),
+            );
+          },
         ),
       ),
     );

@@ -26,7 +26,12 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     }
   }
 
-  void _back() => _pages.previousPage(duration: const Duration(milliseconds: 200), curve: Curves.easeOut);
+  void _skipPinch() => _pages.animateToPage(_page + 2, duration: const Duration(milliseconds: 200), curve: Curves.easeOut);
+
+  void _back() => _pages.animateToPage(_page == 5 && _skippedPinch ? 3 : _page - 1,
+      duration: const Duration(milliseconds: 200), curve: Curves.easeOut);
+
+  bool _skippedPinch = false;
 
   @override
   void dispose() {
@@ -67,12 +72,12 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   _Permissions(onNext: _next),
                   _Page(
                     title: 'Connect your glasses',
-                    footer: _Footer(primary: 'Continue', onPrimary: _next, secondary: 'Set up later', onSecondary: _next),
+                    footer: _Footer(primary: 'Continue', onPrimary: () { _skippedPinch = false; _next(); }, secondary: 'Set up later', onSecondary: () { _skippedPinch = true; _skipPinch(); }),
                     child: const GlassesSetup(),
                   ),
                   _Page(
                     title: 'Try a pinch',
-                    footer: _Footer(primary: 'Continue', onPrimary: _next),
+                    footer: _Footer(primary: 'Continue', onPrimary: _next, secondary: 'Skip for now', onSecondary: _next),
                     child: GestureTest(active: _page == 4),
                   ),
                   const _Defaults(),
@@ -144,7 +149,7 @@ class _Intro extends StatelessWidget {
         footer: _Footer(primary: 'Continue', onPrimary: onNext),
         child: const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           NumberedLine(1, 'Pinch your fingers when you lose the thread or get stuck.'),
-          NumberedLine(2, 'The glasses take one photo, and your phone adds the last 3 minutes of sound.'),
+          NumberedLine(2, 'The glasses take one photo, and your phone adds the last 2.5 minutes of sound.'),
           NumberedLine(3, 'You get one short next step on the glasses. The details wait in Cards for later.'),
         ]),
       );
@@ -211,7 +216,7 @@ class _Permissions extends StatelessWidget {
             onSecondary: onNext,
           ),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            _PermissionLine('Microphone', 'Keeps the last 3 minutes of sound in memory.', s.micPermission),
+            _PermissionLine('Microphone', 'Keeps the last 2.5 minutes of sound in memory.', s.micPermission),
             _PermissionLine('Notifications', 'Shows that FocusLens is listening, with Pause and End.', s.notificationPermission),
             _PermissionLine('Bluetooth', 'Talks to your glasses.', s.bluetoothPermission),
             if (!allBasic)

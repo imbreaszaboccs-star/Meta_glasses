@@ -139,6 +139,8 @@ class FlutterBridge(
                 "resumeMic" -> { engine.resumeMic(); result.success(null) }
                 "help" -> { engine.help("app"); result.success(null) }
                 "bookmark" -> { engine.bookmark("app"); result.success(null) }
+                "questCheck" -> { engine.questCheck(); result.success(null) }
+                "questMove" -> { engine.questMove(call.argument<Int>("d") ?: 0); result.success(null) }
                 "next" -> { engine.next(); result.success(null) }
                 "prev" -> { engine.prev(); result.success(null) }
                 "dismiss" -> { engine.dismiss(); result.success(null) }

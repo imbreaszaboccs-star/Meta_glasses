@@ -109,4 +109,17 @@ void main() {
     expect(elapsed(const Duration(hours: 1, minutes: 2, seconds: 3)), '1:02:03');
     expect(clock(DateTime(2026, 11, 14, 9, 5)), '9:05');
   });
+
+  test('FocusStatus reads quest and busy', () {
+    final s = FocusStatus({
+      'focus': {'quest': {'title': 'Q', 'steps': ['a', 'b'], 'index': 1, 'feedback': 'ok'}, 'imuLabel': 'nod'},
+      'hint': {'phase': 'CHECKING', 'total': 2},
+    });
+    expect(s.quest!.steps.length, 2);
+    expect(s.quest!.index, 1);
+    expect(s.busy, isTrue);
+    expect(s.hintTotal, 2);
+    expect(s.imuLabel, 'nod');
+    expect(FocusStatus.empty.quest, isNull);
+  });
 }

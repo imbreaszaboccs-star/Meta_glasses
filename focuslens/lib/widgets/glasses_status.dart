@@ -33,6 +33,9 @@ GlassesLine glassesLine(FocusStatus s) {
   if (s.cameraPermission == 'denied') {
     return GlassesLine('$name · camera not allowed', problem: true, fixLabel: 'Allow', fix: (c) => c.app.focus.requestGlassesCamera());
   }
+  if (s.glassesMicPermission != 'granted') {
+    return GlassesLine('$name · microphone not allowed', problem: true, fixLabel: 'Allow', fix: (c) => c.app.focus.requestGlassesMic());
+  }
   final battery = s.glassesBattery;
   final parts = [
     name,

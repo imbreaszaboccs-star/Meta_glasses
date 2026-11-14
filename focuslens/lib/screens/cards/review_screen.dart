@@ -109,7 +109,12 @@ class _ReviewScreenState extends State<ReviewScreen> {
             Text('$_got of ${_cards.length} remembered', style: text.bodyLarge!.copyWith(color: t.graphite)),
             const SizedBox(height: Gap.l),
             FilledButton(onPressed: _csv, child: const Text('Export all (CSV)')),
-            TextButton(onPressed: () => setState(() => _i = 0), child: const Text('Go again')),
+            TextButton(onPressed: () => setState(() {
+              _i = 0;
+              _got = 0;
+              _shown = false;
+            }),
+            child: const Text('Go again')),
           ]),
         ),
       );

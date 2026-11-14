@@ -7,7 +7,7 @@ class PrivacyText extends StatelessWidget {
   const PrivacyText({super.key});
 
   static const points = [
-    'Your phone keeps only the last 3 minutes of sound, in memory. It is overwritten all the time and nothing is saved until you pinch.',
+    'Your phone keeps only the last 2.5 minutes of sound, in memory. It is overwritten all the time and nothing is saved until you pinch.',
     'When you pinch, that sound and one photo go to the FocusLens server to get your step. The server doesn\'t keep them.',
     'Cards (photo, step and a short recording) stay on this phone. They are deleted after 30 days unless you change it.',
     'Pause listening at any time from the notification. Pausing also wipes the sound in memory.',

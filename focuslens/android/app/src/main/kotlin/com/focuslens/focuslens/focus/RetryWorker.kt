@@ -9,6 +9,9 @@ import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
+import android.graphics.BitmapFactory
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import com.focuslens.focuslens.FocusLensApp
 import java.util.concurrent.TimeUnit
 import org.json.JSONArray
@@ -44,12 +47,15 @@ class RetryWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx,
             val ok = res.ok
             val attempts = card.optInt("attempts") + 1
             if (ok != null) {
+                val situation = ok.card.optString("situation").ifBlank { card.optString("mode") }
+                val crop = withContext(Dispatchers.Default) { Crop.png(photo, ok.focusBox) }
+                crop?.first?.recycle()
+                val formulaOk = ok.formulaPng?.let { BitmapFactory.decodeByteArray(it, 0, it.size) != null } ?: false
                 store.update(id) { c ->
-                    c.getJSONArray("steps").put(org.json.JSONObject().put("text", ok.nextStep).put("at", CardStore.now()).apply { req.optString("photo").takeIf { it.isNotEmpty() }?.let { put("photo", it) } })
-                    store.putFormula(id, c, ok.formula, ok.formulaPng)
+                    store.applyHint(id, c, ok, ok.formulaPng.takeIf { formulaOk }, crop?.second, CardStore.isQuest(ok, situation),
+                        req.optString("photo").takeIf { it.isNotEmpty() }, isNew = true)
                     ok.mistake.takeIf { it.isNotBlank() }?.let { engine.mistakes.add(it) }
-                    c.put("card", ok.card).put("status", CardStore.STATUS_DONE).put("attempts", attempts).put("late", true)
-                    c.remove("error"); c.remove("request")
+                    c.put("attempts", attempts).put("late", true)
                 }
                 // Keep or drop the audio according to the setting (the PCM is gone, so "last60" keeps what was sent).
                 if (audioName != null) {

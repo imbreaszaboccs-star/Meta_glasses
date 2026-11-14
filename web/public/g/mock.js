@@ -38,7 +38,7 @@ function mockHud(name) {
   if (name === 'hint') return { s: 'hint', recap: RECAP, text: 'Write down the product rule.', formula: RULE, footer: '← close' };
   if (name === 'quest') return questHud(1);
   if (name === 'nudge') return { s: 'nudge', kind: 'stuck', title: NUDGES.stuck_l2.title, attention: true, footer: '← dismiss' };
-  if (name === 'message') return { s: 'message', title: 'Session started', footer: 'pinch = help · capture = save' };
+  if (name === 'message') return { s: 'message', title: 'Session started', footer: 'pinch = help now · swipe → = save for later' };
   if (name === 'thinking') return { s: 'thinking', title: 'Looking…' };
   return { s: 'idle' };
 }
@@ -86,7 +86,7 @@ function mockSim(name) {
   const f = mock.focus;
   if (name === 'start') {
     Object.assign(f, { running: true, startedAt: Date.now(), hintCount: 0, micPaused: false, lastHint: null, quest: null, situation: null, attention: 'ENGAGED' });
-    return mockMessage('Session started', 3000, 'pinch = help · capture = save');
+    return mockMessage('Session started', 3000, 'pinch = help now · swipe → = save for later');
   }
   if (name === 'stop') { Object.assign(f, { running: false, lastHint: null, quest: null, situation: null, attention: null }); return mockShow({ s: 'idle' }); }
   if (!f.running) Object.assign(f, { running: true, startedAt: Date.now(), hintCount: 0, attention: 'ENGAGED' }); // a scenario implies a running session
@@ -123,6 +123,7 @@ function mockGesture(g) {
   if (g === 'back' || g === 'left') { if (h.s !== 'idle') mockIdle(); return; }
   if (h.s === 'idle') {
     if (g === 'select') mockLecture();
+    else if (g === 'right') mockSim('bookmark');
     else if (g === 'up') mockShow({ s: 'blocks', rows: [{ title: 'Product rule', time: '10:12' }, { title: 'Solve 2x + 3 = 11', time: '09:03' }], selected: 0, footer: 'Pinch open · ← close' });
   } else if (h.s === 'quest' && g === 'select') mockQuestStep();
   else if (h.s === 'nudge' && g === 'select') {

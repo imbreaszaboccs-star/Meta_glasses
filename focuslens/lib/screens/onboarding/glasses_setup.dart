@@ -6,7 +6,7 @@ import '../../app_scope.dart';
 import '../../data/focus_status.dart';
 import '../../theme/tokens.dart';
 
-/// Connect the glasses: Meta AI + Developer Mode → link → connected → camera. Live status per step.
+/// Connect the glasses: Meta AI + Developer Mode → link → connected → camera → microphone. Live status per step.
 class GlassesSetup extends StatelessWidget {
   const GlassesSetup({super.key});
 
@@ -55,6 +55,15 @@ class GlassesSetup extends StatelessWidget {
           action: s.cameraPermission == 'granted' || !s.glassesConnected || !s.registered
               ? null
               : ('Allow camera', app.focus.requestGlassesCamera),
+        ),
+        _Step(
+          n: 5,
+          title: 'Glasses microphone',
+          body: 'So a session can hear through the glasses when the phone is locked.',
+          done: s.glassesMicPermission == 'granted',
+          action: s.glassesMicPermission == 'granted' || !s.glassesConnected || !s.registered
+              ? null
+              : ('Allow microphone', app.focus.requestGlassesMic),
         ),
       ]),
     );

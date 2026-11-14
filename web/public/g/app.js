@@ -4,6 +4,8 @@
  * Input (KeyboardEvent.key): ArrowUp/Down move the focused row, ArrowLeft/Right switch pages, Enter (pinch) activates,
  * Escape/Backspace = Back. Sub-screens push a history entry and Back pops it (popstate). At a page root Back is NOT
  * intercepted, so the system shows its native menu. Key repeats of Back belong to the system and are ignored.
+ * HUD fallback (phone draws the HUD natively while a session runs), idle keys match native: Enter = help now, → = save for later,
+ * ← = web menu, ↑ = cards panel, ↓ = voice note. In the cards (blocks) list ↑/↓ move the row, ← closes.
  * Notes are dictated: the Notes page row sends `voice_note`; the phone records, transcribes and saves (HUD overlay shows progress).
  * Dev: ?mock=1 runs without network against a fake phone (mock.js). Params: page=, run=1, hud=idle|hint|quest|nudge|message|thinking,
  * sim=<scenario>, detail=<id>, banner=start|stop|err. Settings > Developer > Scenarios plays the scenarios (real phone: command `sim`).
@@ -256,7 +258,7 @@ function focusPage() {
     if (f.lastHint) top.push(el('div', 'hinttxt clamp2', str(f.lastHint)));
     top.push(el('div', 'gap'));
     rows.push({ l: 'Help now', act: () => send('help', {}, 'Help requested') });
-    rows.push({ l: 'Save for later', act: () => send('bookmark', {}, null) });
+    rows.push({ l: 'Save for later', act: () => send('bookmark', {}, 'Saved for later') });
     rows.push(f.micPaused ? { l: 'Resume mic', r: 'Mic paused', act: () => send('resume_mic', {}, 'Mic on') } : { l: 'Pause mic', act: () => send('pause_mic', {}, 'Mic paused') });
     rows.push({ l: armed === 'stop' ? 'Pinch again to end' : 'End session', r: armed === 'stop' ? '' : 'pinch twice', warn: armed === 'stop', act: () => { if (arm('stop')) send('stop_focus', {}, null, false); } });
     return { top, rows };
@@ -302,11 +304,14 @@ function formulaEl(tex, cls) {
   return d;
 }
 
+// single-step cards carry `step`; multi-step ones `steps`
+const stepsOf = (c) => (Array.isArray(c.steps) && c.steps.length ? c.steps : c.step ? [{ text: c.step, done: false }] : []);
+
 function readAloud(c) {
   try {
     const ss = window.speechSynthesis; if (!ss) return;
     if (ss.speaking) { ss.cancel(); banner('○', 'Stopped reading'); render(); return; }
-    const parts = [c.title, c.summary].concat((Array.isArray(c.steps) ? c.steps : []).map((s) => s.text), [c.correction]).filter(Boolean);
+    const parts = [c.title, c.summary].concat(stepsOf(c).map((s) => s.text), [c.correction]).filter(Boolean);
     const u = new SpeechSynthesisUtterance(parts.join('. '));
     u.lang = { en: 'en-US', cs: 'cs-CZ', sk: 'sk-SK', de: 'de-DE', pl: 'pl-PL' }[config().language] || 'en-US';
     u.onend = render;
@@ -322,9 +327,9 @@ function detailScreen(s) {
   info.appendChild(el('div', 'meta', [str(c.situation), dayLabel(c.day) + ' ' + str(c.at)].filter(Boolean).join(' · ')));
   if (c.summary) { const d = el('div', 'body clamp2', str(c.summary)); d.style.fontSize = '20px'; d.style.marginTop = '8px'; info.appendChild(d); }
   if (c.formula) info.appendChild(formulaEl(str(c.formula)));
-  const steps = Array.isArray(c.steps) ? c.steps : [];
-  if (steps.length) { const w = el('div'); w.style.marginTop = '6px'; steps.slice(0, 3).forEach((st) => w.appendChild(el('div', 'step' + (st.done ? ' done' : ''), (st.done ? '✓ ' : '○ ') + str(st.text)))); info.appendChild(w); }
-  if (c.correction && !c.formula) { const d = el('div', 'meta clamp2', str(c.correction)); d.style.marginTop = '6px'; info.appendChild(d); }
+  const steps = stepsOf(c), cap3 = c.formula ? 2 : 3;
+  if (steps.length) { const w = el('div'); w.style.marginTop = '6px'; steps.slice(0, cap3).forEach((st) => w.appendChild(el('div', 'step' + (st.done ? ' done' : ''), (st.done ? '✓ ' : '○ ') + str(st.text)))); info.appendChild(w); }
+  if (c.correction) { const d = el('div', 'meta clamp2', str(c.correction)); d.style.marginTop = '6px'; info.appendChild(d); }
   const speaking = (() => { try { return !!(window.speechSynthesis && window.speechSynthesis.speaking); } catch (e) { return false; } })();
   return {
     top: [info], max: 3,
@@ -347,7 +352,11 @@ function reviewPage() {
   } else {
     const cs = Array.isArray(R.cards) ? R.cards : [];
     if (!cs.length) top.push(el('div', 'title', 'Nothing to review'));
-    else if (rv.idx >= cs.length) { top.push(el('div', 'title', 'Done for today')); top.push(el('div', 'meta', cs.length + ' cards reviewed.')); }
+    else if (rv.idx >= cs.length) {
+      top.push(el('div', 'title', 'Done for today')); top.push(el('div', 'meta', cs.length + ' cards reviewed.')); top.push(el('div', 'gap'));
+      rows = [{ l: 'Go again', act: () => { rv.idx = 0; rv.answer = false; render(); } },
+        { l: 'Load new cards', act: () => { rv = { idx: 0, answer: false, requested: true }; send('review_load', {}, null); render(); } }];
+    }
     else {
       const c = cs[rv.idx] || {};
       top.push(el('div', 'micro meta', 'Card ' + (rv.idx + 1) + ' of ' + cs.length));
@@ -524,7 +533,7 @@ document.addEventListener('keydown', (e) => {
   if (!paired()) { if (k === 'Enter') { e.preventDefault(); $('codeInput').focus(); } return; }
   if (hudActive()) {
     const idle = hud().s === 'idle';
-    if (idle && (k === 'ArrowLeft' || k === 'ArrowRight')) { e.preventDefault(); openMenu(); return; }
+    if (idle && k === 'ArrowLeft') { e.preventDefault(); openMenu(); return; } // idle: → = save for later, ↑ cards, ↓ voice note (native parity)
     const g = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right', Enter: 'select' }[k];
     if (!g) return;
     e.preventDefault(); if (e.repeat && g === 'select') return;

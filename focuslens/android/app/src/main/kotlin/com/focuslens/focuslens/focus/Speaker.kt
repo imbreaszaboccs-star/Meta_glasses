@@ -4,6 +4,7 @@ import android.content.Context
 import android.media.AudioAttributes
 import android.media.MediaPlayer
 import android.speech.tts.TextToSpeech
+import android.speech.tts.UtteranceProgressListener
 import java.io.File
 import java.util.Locale
 import kotlinx.coroutines.Dispatchers
@@ -19,6 +20,15 @@ class Speaker(private val context: Context) {
     private var ttsReady = false
     private var player: MediaPlayer? = null
     private var last: Pair<String, ByteArray>? = null // WAV of the last text, so repeat/next doesn't refetch
+    /** Fired on every speaking start/stop (any thread). */
+    var onSpeaking: (Boolean) -> Unit = {}
+    @Volatile private var speaking = false
+
+    private fun setSpeaking(on: Boolean) {
+        if (speaking == on) return
+        speaking = on
+        onSpeaking(on)
+    }
 
     private val attrs = AudioAttributes.Builder()
         .setUsage(AudioAttributes.USAGE_ASSISTANT)
@@ -26,7 +36,14 @@ class Speaker(private val context: Context) {
         .build()
 
     fun warmUp() {
-        if (tts == null) tts = TextToSpeech(context) { status -> ttsReady = status == TextToSpeech.SUCCESS }
+        if (tts == null) tts = TextToSpeech(context) { status ->
+            ttsReady = status == TextToSpeech.SUCCESS
+            tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+                override fun onStart(id: String?) = setSpeaking(true)
+                override fun onDone(id: String?) = setSpeaking(false)
+                @Deprecated("Deprecated in Java") override fun onError(id: String?) = setSpeaking(false)
+            })
+        }
     }
 
     /** [hasDisplay]: the text is on the HUD, so a failed /api/ai/tts stays silent instead of switching voice. */
@@ -45,6 +62,7 @@ class Speaker(private val context: Context) {
         t.language = Locale.forLanguageTag(locale)
         t.setAudioAttributes(attrs)
         t.setSpeechRate(0.92f)
+        setSpeaking(true)
         t.speak(text, TextToSpeech.QUEUE_FLUSH, null, "hint")
     }
 
@@ -55,10 +73,11 @@ class Speaker(private val context: Context) {
                 player = MediaPlayer().apply {
                     setAudioAttributes(attrs)
                     setDataSource(f.absolutePath)
-                    setOnCompletionListener { it.release(); if (player === it) player = null }
+                    setOnCompletionListener { it.release(); if (player === it) { player = null; setSpeaking(false) } }
                     prepare()
                     start()
                 }
+                setSpeaking(true)
             }
             true
         } catch (e: Exception) {
@@ -70,6 +89,7 @@ class Speaker(private val context: Context) {
         runCatching { player?.stop(); player?.release() }
         player = null
         tts?.stop()
+        setSpeaking(false)
     }
 
     fun shutdown() {

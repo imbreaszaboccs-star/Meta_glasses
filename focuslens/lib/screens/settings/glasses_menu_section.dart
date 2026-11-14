@@ -119,6 +119,11 @@ class GlassesMenuSection extends StatelessWidget {
       if (allow == true) await app.focus.openBatterySettings();
       if (!context.mounted) return;
     }
+    final gs = app.focus.status.value;
+    if (gs.registered && gs.glassesConnected && gs.glassesMicPermission != 'granted') {
+      await app.focus.requestGlassesMic();
+      if (!context.mounted) return;
+    }
     // Meta AI offers to add the web app to the glasses; the code and address are the fallback.
     final dialog = showDialog<void>(context: context, builder: (_) => _PairDialog(r, app.focus));
     await app.focus.remoteInstall(r.installUrl);

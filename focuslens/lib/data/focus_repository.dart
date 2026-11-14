@@ -111,6 +111,8 @@ class FocusRepository {
   Future<void> next() => _call('next');
   Future<void> prev() => _call('prev');
   Future<void> dismiss() => _call('dismiss');
+  Future<void> questCheck() => _call('questCheck');
+  Future<void> questMove(int d) => _call('questMove', {'d': d});
   Future<void> setMode(String mode) => _call('setMode', {'mode': mode});
   Future<void> updateConfig(Map<String, Object?> config) => _call('updateConfig', config);
 

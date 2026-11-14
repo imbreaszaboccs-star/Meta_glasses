@@ -68,6 +68,12 @@ object Crop {
         }
     }
 
+    /** [render] + its PNG bytes (what the card stores), or null when there is no valid box. Blocking. */
+    fun png(jpeg: ByteArray?, box: IntArray?): Pair<Bitmap, ByteArray>? {
+        if (jpeg == null || !valid(box)) return null
+        return render(jpeg, box)?.let { b -> b to java.io.ByteArrayOutputStream().also { b.compress(Bitmap.CompressFormat.PNG, 100, it) }.toByteArray() }
+    }
+
     /** HUD copy: black strips to a fixed width, so "fill the width" never blows up a narrow crop. */
     fun forHud(b: Bitmap): Bitmap {
         if (b.width >= MAX_W) return b

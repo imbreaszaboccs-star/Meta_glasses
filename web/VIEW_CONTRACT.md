@@ -25,13 +25,15 @@ dev:     boolean   // phone is a debug build and accepts `sim`
 
 The HUD is published whether or not a session runs. With no session the web app draws the overlay only while `hud.s` is not `idle` (voice note screens over the Notes page) and sends its gestures to the phone like the session HUD; back at `idle` the overlay disappears.
 
+While a session runs the phone draws the HUD natively and the glasses hide the web app; the web HUD overlay is only a fallback. Its idle keys mirror the native gestures: Enter = help now, ArrowRight = save for later (`gesture right`), ArrowUp = cards panel, ArrowDown = voice note, ArrowLeft = open the web menu (not sent). In the `blocks` list ArrowUp/ArrowDown move the row (`gesture up/down`). Outside idle every arrow is sent as the gesture of the same name.
+
 ### HUD views (`hud.s`)
 - `idle`: `{s:"idle"}` (+ `attention:true` = the L1 amber dot). No title; the web app draws pure black.
 - `hint`: `anchor` (goal), `recap` (lecture only: "Just explained"), `text` (what to write down), `formula` (LaTeX), `crop`.
 - `quest`: `text` (step), `sub` (feedback), `progress` ("2/4"), `footer`.
 - `nudge`: `kind` stuck|lapse|key|dozing; `title` already holds the action ("Stuck? Pinch = smaller step",
   "Lost the thread? Pinch = summary", "Key point just now · Pinch = summary", "Still with us? Pinch = recap"); `footer` "← dismiss".
-- `message`: centered `title` + `footer`. Used for the start confirmation (`Session started` / `pinch = help · capture = save`, 3 s),
+- `message`: centered `title` + `footer`. Used for the start confirmation (`Session started` / `pinch = help now · swipe → = save for later`, 3 s),
   the milestone pulse (`30 min in session`, 3 s) and bookmark (`✓ Saved for later`).
 - `thinking`: centered `title`. No clocks or elapsed timers anywhere on the HUD (spec §2.2).
 

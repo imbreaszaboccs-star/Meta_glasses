@@ -434,6 +434,7 @@ class RemoteLink(private val app: Context, private val engine: FocusEngine) : En
             if (qs != null) for (k in 0 until minOf(qs.length(), 6)) {
                 steps.put(JSONObject().put("text", RemoteProto.clip(qs.optString(k), 160)).put("done", qd?.optBoolean(k) ?: false))
             }
+            if (steps.length() == 0) steps.put(JSONObject().put("text", RemoteProto.clip(last, 160)).put("done", false))
             val at = c.optString("createdAt")
             n++
             cards.put(JSONObject().put("id", c.optString("id"))

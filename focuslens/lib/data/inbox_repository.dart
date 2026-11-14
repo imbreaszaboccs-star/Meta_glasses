@@ -20,14 +20,26 @@ class InboxRepository extends ChangeNotifier {
 
   final FocusRepository _focus;
   Timer? _timer;
-  List<InboxItem> items = const [];
+  List<InboxItem> _all = const [];
+  final _hidden = <String>{};
+  List<InboxItem> get items => [for (final i in _all) if (!_hidden.contains(i.id)) i];
   bool loaded = false;
+
+  void hide(String id) {
+    _hidden.add(id);
+    notifyListeners();
+  }
+
+  void unhide(String id) {
+    _hidden.remove(id);
+    notifyListeners();
+  }
 
   int get openCount => items.where((i) => !i.done).length;
 
   Future<void> reload() async {
     final raw = await _focus.inboxList();
-    items = [
+    _all = [
       for (final j in raw.whereType<Map>())
         InboxItem(
           '${j['id']}',
@@ -49,6 +61,7 @@ class InboxRepository extends ChangeNotifier {
   Future<void> delete(String id) async {
     await _focus.inboxDelete(id);
     await reload();
+    _hidden.remove(id);
   }
 
   /// Pushes unsynced notes to Todoist now. Returns an error message or null.

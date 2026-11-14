@@ -23,6 +23,8 @@ object Strings {
     const val batteryLow = "Glasses battery is low."
     const val noAudio = "No microphone for this block."
     const val noAudioBody = "Hints will use the photo only."
+    const val glassesMicDenied = "Glasses microphone not allowed."
+    const val glassesMicDeniedBody = "Allow it in the FocusLens app. Photo only for now."
 
     // quest / note / goal
     const val footerQuest = "pinch = done ✓ · ←→ steps"
@@ -42,8 +44,6 @@ object Strings {
     const val micOff = "The microphone is off."
     const val noteSaved = "📥 Saved for later"
     const val noteFailed = "Couldn't save, try again"
-    const val goalPrompt = "What are we working on?"
-    const val goalPromptBody = "Say it… · pinch skip"
     fun backTo(goal: String) = "Back to: ${goal.take(40)}"
     fun anchor(goal: String) = "⚓ " + (if (goal.length > 28) goal.take(27) + "…" else goal)
     fun timePulse(mins: Int) = "$mins min in session"

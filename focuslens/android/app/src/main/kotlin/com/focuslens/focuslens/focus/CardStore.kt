@@ -70,6 +70,24 @@ class CardStore(filesDir: File) {
         if (png != null) { saveFile(id, "formula.png", png); c.put("formulaImage", "formula.png") }
     }
 
+    /**
+     * Writes a hint answer into [c] (call inside [update]): formula, crop, mistake, quest, the step, the card, status.
+     * One path for the live pipeline (FocusEngine.onHintOk) and bookmarked cards (RetryWorker).
+     */
+    fun applyHint(id: String, c: JSONObject, res: HintResponse, formulaPng: ByteArray?, cropPng: ByteArray?, isQuest: Boolean, photoName: String?, isNew: Boolean) {
+        putFormula(id, c, res.formula, formulaPng)
+        cropPng?.let { saveFile(id, "crop.png", it); c.put("cropImage", "crop.png") }
+        if (res.mistake.isNotBlank()) c.put("mistake", res.mistake) // read by evening review + Notion export
+        if (isQuest) c.put("quest", questJson(res.steps, 0, BooleanArray(res.steps.size))) else c.remove("quest")
+        val step = JSONObject().put("text", res.nextStep).put("at", now())
+        photoName?.let { step.put("photo", it) }
+        c.getJSONArray("steps").put(step)
+        c.put("card", if (isNew) res.card else mergeCard(c.optJSONObject("card"), res.card))
+        c.put("status", STATUS_DONE).remove("error")
+        c.put("attempts", c.optInt("attempts") + 1)
+        c.remove("request")
+    }
+
     fun readFile(id: String, name: String): ByteArray? =
         File(dir(id), name).takeIf { it.exists() }?.readBytes()
 
@@ -109,6 +127,24 @@ class CardStore(filesDir: File) {
         const val STATUS_PENDING = "pending"
         const val STATUS_FAILED = "failed"
         private val ID_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH-mm-ss")
+
+        /** A quest (pinch = camera checks the step) only when the user has to DO something: not for an answer, recap, summary. */
+        fun isQuest(res: HintResponse, situation: String): Boolean =
+            res.intent in setOf("next_step", "fix", "") && situation != "lecture" &&
+                (res.steps.size >= 2 || (res.steps.size == 1 && situation in setOf("homework", "desk")))
+
+        fun questJson(steps: List<String>, index: Int, done: BooleanArray) =
+            JSONObject().put("steps", JSONArray(steps)).put("index", index).put("done", JSONArray(done.toList()))
+
+        fun mergeCard(old: JSONObject?, new: JSONObject): JSONObject {
+            if (old == null) return new
+            for (k in listOf("summary", "correction", "transcript_tail", "situation")) {
+                val v = new.optString(k)
+                if (v.isNotBlank()) old.put(k, v)
+            }
+            new.optJSONArray("speakers")?.takeIf { it.length() > 0 }?.let { old.put("speakers", it) }
+            return old
+        }
 
         fun now(): String = LocalDateTime.now().withNano(0).toString()
 

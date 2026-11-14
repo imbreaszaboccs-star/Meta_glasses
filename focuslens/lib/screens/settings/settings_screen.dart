@@ -155,12 +155,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ListTile(
                 title: const Text('Memory length'),
                 subtitle: const Text('How much recent sound the phone keeps for a step.'),
-                trailing: Text('${settings.bufferSec % 60 == 0 ? settings.bufferSec ~/ 60 : (settings.bufferSec / 60).toStringAsFixed(1)} min', style: text.bodyMedium),
+                trailing: Text('${bufferLabel(settings.bufferSec)} min', style: text.bodyMedium),
                 onTap: () async {
                   final v = await pickOne(context, title: 'Memory length', current: settings.bufferSec, options: const [
                     (60, '1 minute'),
                     (120, '2 minutes'),
-                    (150, '2.5 minutes'),
+                    (150, '2.5 minutes (max)'),
                   ]);
                   if (v != null) settings.setBufferSec(v);
                 },

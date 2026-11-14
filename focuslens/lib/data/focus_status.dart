@@ -1,3 +1,12 @@
+class Quest {
+  const Quest(this.title, this.steps, this.index, this.feedback, this.checking);
+  final String title;
+  final List<String> steps;
+  final int index;
+  final String? feedback;
+  final bool checking;
+}
+
 /// Typed view of FocusEngine.status() (android/.../focus/FocusEngine.kt).
 class FocusStatus {
   const FocusStatus(this._m);
@@ -71,6 +80,25 @@ class FocusStatus {
   Map<String, dynamic> get _h => _sub('hint');
   String get hintPhase => _h['phase'] as String? ?? 'IDLE';
   bool get thinking => hintPhase == 'THINKING';
+  bool get checking => hintPhase == 'CHECKING';
+  bool get dumping => hintPhase == 'DUMP';
+  /// The engine is working on something; Help / Bookmark / Next wait.
+  bool get busy => thinking || checking || dumping;
+  int get hintTotal => (_h['total'] as num?)?.toInt() ?? 0;
+  /// Active quest (title, steps, index, feedback, checking) or null.
+  Quest? get quest {
+    final q = _f['quest'];
+    if (q is! Map) return null;
+    return Quest(
+      '${q['title'] ?? ''}',
+      [for (final x in (q['steps'] as List? ?? const [])) '$x'],
+      (q['index'] as num?)?.toInt() ?? 0,
+      q['feedback'] as String?,
+      q['checking'] == true,
+    );
+  }
+  /// Active data-collection label, if any.
+  String? get imuLabel => _f['imuLabel'] as String?;
   String? get shownText => _h['text'] as String?;
   String? get lastText => _h['lastText'] as String?;
   String? get lastCardId => _h['lastCardId'] as String?;

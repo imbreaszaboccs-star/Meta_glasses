@@ -88,7 +88,7 @@ class _NoteTile extends StatelessWidget {
         padding: const EdgeInsets.only(right: Gap.l),
         child: const Icon(Icons.delete_outline_rounded, color: Colors.white),
       ),
-      onDismissed: (_) => repo.delete(item.id),
+      onDismissed: (_) => _deleteWithUndo(context, item),
       child: CheckboxListTile(
         value: item.done,
         onChanged: (v) => repo.setDone(item.id, v ?? false),
@@ -108,6 +108,24 @@ class _NoteTile extends StatelessWidget {
         ]),
       ),
     );
+  }
+
+  /// Hide now, undo for 5 s, then delete for real (same as cards).
+  void _deleteWithUndo(BuildContext context, InboxItem item) {
+    final repo = context.app.inbox;
+    repo.hide(item.id);
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.hideCurrentSnackBar();
+    messenger
+        .showSnackBar(SnackBar(
+          content: const Text('Note deleted'),
+          duration: const Duration(seconds: 5),
+          action: SnackBarAction(label: 'Undo', onPressed: () => repo.unhide(item.id)),
+        ))
+        .closed
+        .then((reason) {
+      if (reason != SnackBarClosedReason.action) repo.delete(item.id);
+    });
   }
 
   static String _day(DateTime d) {

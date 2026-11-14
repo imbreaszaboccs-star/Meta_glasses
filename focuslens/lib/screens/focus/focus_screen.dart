@@ -75,7 +75,7 @@ class _ReadyState extends State<_Ready> {
       listenable: Listenable.merge([app.settings, app.cards]),
       builder: (context, _) {
         final pending = app.cards.pendingCount;
-        final minutes = (app.settings.bufferSec / 60).ceil();
+        final minutes = bufferLabel(app.settings.bufferSec);
         return ListView(
           padding: const EdgeInsets.fromLTRB(Gap.l, Gap.l, Gap.l, Gap.xl),
           children: [
@@ -193,7 +193,9 @@ class _RunningState extends State<_Running> {
     final text = Theme.of(context).textTheme;
     final t = Tokens.of(context);
     final since = s.startedAt == null ? Duration.zero : DateTime.now().difference(s.startedAt!);
-    final minutes = (s.bufferSecConfig / 60).ceil();
+    final minutes = bufferLabel(s.bufferSecConfig);
+    final quest = s.quest;
+    final micFailed = !s.listening && !s.micPaused;
     final step = s.lastText;
     final sit = s.situation.isNotEmpty ? (modeNames[s.situation] ?? s.situation) : null;
 
@@ -235,10 +237,18 @@ class _RunningState extends State<_Running> {
               style: text.bodyMedium!.copyWith(color: s.listening || s.micPaused ? t.ink : t.brick),
             ),
           ),
-          TextButton(
-            onPressed: s.micPaused ? app.focus.resumeMic : app.focus.pauseMic,
-            child: Text(s.micPaused ? 'Resume' : 'Pause'),
-          ),
+          if (micFailed)
+            TextButton(
+              onPressed: !s.micPermission
+                  ? app.focus.requestPermissions
+                  : app.focus.openAppSettings,
+              child: Text(s.micPermission ? 'Open settings' : 'Allow microphone'),
+            )
+          else
+            TextButton(
+              onPressed: s.micPaused ? app.focus.resumeMic : app.focus.pauseMic,
+              child: Text(s.micPaused ? 'Resume' : 'Pause'),
+            ),
         ]),
         // glasses line
         Row(children: [
@@ -262,11 +272,14 @@ class _RunningState extends State<_Running> {
         const SizedBox(height: Gap.l),
 
         // the step
-        if (s.thinking) ...[
-          Text('Thinking…', style: text.titleSmall),
+        if (s.busy) ...[
+          Text(s.checking ? 'Checking…' : s.dumping ? 'Listening…' : 'Thinking…', style: text.titleSmall),
           const SizedBox(height: Gap.m),
           const LinearProgressIndicator(minHeight: 3),
           const SizedBox(height: Gap.xl),
+        ] else if (quest != null) ...[
+          _QuestCard(q: quest),
+          const SizedBox(height: Gap.l),
         ] else if (step != null) ...[
           Text('Last step', style: text.titleSmall),
           const SizedBox(height: Gap.s),
@@ -288,18 +301,18 @@ class _RunningState extends State<_Running> {
         ],
 
         FilledButton(
-          onPressed: s.thinking ? null : app.focus.help,
+          onPressed: s.busy ? null : app.focus.help,
           child: const SizedBox(width: double.infinity, child: Center(child: Text('Help'))),
         ),
         const SizedBox(height: Gap.s),
         OutlinedButton(
-          onPressed: s.thinking ? null : app.focus.bookmark,
+          onPressed: s.busy ? null : app.focus.bookmark,
           child: const SizedBox(width: double.infinity, child: Center(child: Text('Bookmark for later'))),
         ),
-        if (step != null && !s.thinking) ...[
+        if (s.hintTotal > 0 && quest == null) ...[
           const SizedBox(height: Gap.s),
           OutlinedButton(
-            onPressed: app.focus.next,
+            onPressed: s.busy ? null : app.focus.next,
             child: const SizedBox(width: double.infinity, child: Center(child: Text('Next step'))),
           ),
         ],
@@ -319,5 +332,50 @@ class _RunningState extends State<_Running> {
         ),
       ],
     );
+  }
+}
+
+/// A multi-step quest: current step, the last camera check, Done / back / forward.
+class _QuestCard extends StatelessWidget {
+  const _QuestCard({required this.q});
+  final Quest q;
+
+  @override
+  Widget build(BuildContext context) {
+    final focus = context.app.focus;
+    final text = Theme.of(context).textTheme;
+    final t = Tokens.of(context);
+    final n = q.steps.length;
+    final i = q.index.clamp(0, n > 0 ? n - 1 : 0);
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text(q.title, style: text.titleSmall),
+      const SizedBox(height: Gap.s),
+      Text('Step ${i + 1} / $n', style: text.bodySmall),
+      const SizedBox(height: Gap.xs),
+      Semantics(liveRegion: true, child: Text(n == 0 ? '' : q.steps[i], style: text.headlineMedium)),
+      if (q.feedback != null && q.feedback!.isNotEmpty) ...[
+        const SizedBox(height: Gap.s),
+        Text(q.feedback!, style: text.bodyMedium!.copyWith(color: t.graphite)),
+      ],
+      const SizedBox(height: Gap.m),
+      Row(children: [
+        IconButton(
+          tooltip: 'Previous step',
+          onPressed: q.checking || i == 0 ? null : () => focus.questMove(-1),
+          icon: const Icon(Icons.chevron_left_rounded),
+        ),
+        Expanded(
+          child: FilledButton(
+            onPressed: q.checking ? null : focus.questCheck,
+            child: const Center(child: Text('Done ✓')),
+          ),
+        ),
+        IconButton(
+          tooltip: 'Next step',
+          onPressed: q.checking || i >= n - 1 ? null : () => focus.questMove(1),
+          icon: const Icon(Icons.chevron_right_rounded),
+        ),
+      ]),
+    ]);
   }
 }

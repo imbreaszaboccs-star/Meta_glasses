@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -26,11 +27,16 @@ class _CardDetailScreenState extends State<CardDetailScreen> {
   @override
   void initState() {
     super.initState();
-    _focus; // capture now; context must not be used in dispose()
+    _speech = _focus.events.where((e) => e['type'] == 'speech').listen((e) {
+      if (mounted) setState(() => _speaking = e['speaking'] == true);
+    });
   }
+
+  StreamSubscription? _speech;
 
   @override
   void dispose() {
+    _speech?.cancel();
     if (_speaking) _focus.stopSpeaking();
     super.dispose();
   }
@@ -225,10 +231,11 @@ class _CardDetailScreenState extends State<CardDetailScreen> {
             onPressed: () {
               if (_speaking) {
                 app.focus.stopSpeaking();
+                setState(() => _speaking = false);
               } else {
                 app.focus.speak(card.toSpeech());
+                setState(() => _speaking = true);
               }
-              setState(() => _speaking = !_speaking);
             },
           ),
         ],
