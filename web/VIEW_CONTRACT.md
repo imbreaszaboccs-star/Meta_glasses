@@ -19,8 +19,21 @@ cards:   [ {id, title, step, situation, day /*YYYY-MM-DD*/, at /*HH:MM*/, correc
 review:  { status /*idle|loading|ready|error*/, error, cards:[{q, a}] }
 imu:     { collect, label /*act name or null*/ }
 integrations: { todoist /*configured*/ }
-hud:     { s, anchor, title, text, sub, formula, crop, progress, rows, selected, footer, attention }   // HudView.kt
+hud:     { s, anchor, title, text, sub, formula, crop, progress, rows, selected, footer, attention, recap, kind }   // HudView.kt
+dev:     boolean   // phone is a debug build and accepts `sim`
 ```
+
+The HUD is published whether or not a session runs. With no session the web app draws the overlay only while `hud.s` is not `idle` (voice note screens over the Notes page) and sends its gestures to the phone like the session HUD; back at `idle` the overlay disappears.
+
+### HUD views (`hud.s`)
+- `idle`: `{s:"idle"}` (+ `attention:true` = the L1 amber dot). No title; the web app draws pure black.
+- `hint`: `anchor` (goal), `recap` (lecture only: "Just explained"), `text` (what to write down), `formula` (LaTeX), `crop`.
+- `quest`: `text` (step), `sub` (feedback), `progress` ("2/4"), `footer`.
+- `nudge`: `kind` stuck|lapse|key|dozing; `title` already holds the action ("Stuck? Pinch = smaller step",
+  "Lost the thread? Pinch = summary", "Key point just now · Pinch = summary", "Still with us? Pinch = recap"); `footer` "← dismiss".
+- `message`: centered `title` + `footer`. Used for the start confirmation (`Session started` / `pinch = help · capture = save`, 3 s),
+  the milestone pulse (`30 min in session`, 3 s) and bookmark (`✓ Saved for later`).
+- `thinking`: centered `title`. No clocks or elapsed timers anywhere on the HUD (spec §2.2).
 
 ## Commands (web → phone)
 
@@ -35,6 +48,8 @@ hud:     { s, anchor, title, text, sub, formula, crop, progress, rows, selected,
 | imu_label | label (act name or "none") | engine.setImuLabel |
 | gesture | g: select\|left\|right\|up\|down\|back | engine.onGesture |
 | web_seen | visible | phone notes the web app is on screen (no ack, not logged) |
+| sim | name: start\|lecture_hint\|homework_quest\|bookmark\|milestone\|stuck_l1\|stuck_l2\|lapse_l2\|key_l2\|doze_l2\|stop | debug builds only (`state.dev`): plays that scenario on the real HUD |
+| voice_note | – | engine.voiceNote: records a note by voice (phone mic, silence or 30 s ends it), transcribes via /api/ai/dump kind=task, saves to the inbox. Needs a running session (else the ack fails: "Start a session to dictate"). While it runs the HUD is `message` "Listening…" (pinch = finish now, left/back = cancel), `thinking` "Saving…", `message` "Saved" |
 | last_hint, refresh | – | – |
 
 Acks come back in `acks` of the next view (`{id, ok, error}`), except for `web_seen`.
@@ -42,3 +57,10 @@ Acks come back in `acks` of the next view (`{id, ok, error}`), except for `web_s
 ## Who draws what
 - Web app visible (a `web_seen {visible:true}` within the last 45 s): everything is drawn by the web app; the phone never attaches the DAT display.
 - Web app hidden / display asleep: the phone keeps sensing. When something proactive happens (L2 nudge, wake-word help, a hint), it attaches the DAT display, shows the HUD there, and removes the display again when the HUD returns to idle.
+
+## Meta AI voice tools (WebMCP, `public/g/webmcp.js`)
+When the glasses expose `document.modelContext` (Developer Mode or Meta's rollout), the web app registers
+`focuslens_start_session`, `focuslens_end_session`, `focuslens_get_help`, `focuslens_save_for_later` and
+`focuslens_add_note {text}`. Each maps to the relay command of the same meaning and resolves when its ack
+arrives (≤ 8 s, Meta allows 10 s); a failed ack rejects. Tools only exist while the web app is in front.
+Dev: `?mock=1` without `document.modelContext` puts them in `window.focuslensTools` for console tests.

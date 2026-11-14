@@ -34,6 +34,8 @@ class HintResponse(
     val nextStep: String, val card: JSONObject, val serverMs: Long?,
     val formula: String = "", val formulaPng: ByteArray? = null,
     val steps: List<String> = listOf(nextStep), val focusBox: IntArray? = null, val mistake: String = "",
+    /** Lecture only: what was just explained (<= 25 words), "" otherwise. */
+    val recap: String = "",
 )
 
 class CheckResponse(
@@ -83,7 +85,7 @@ object HintClient {
                 step, json.optJSONObject("card") ?: JSONObject(), serverTiming(conn),
                 json.optString("formula").trim(), decodePng(json.optString("formula_png")),
                 strings(json.optJSONArray("steps")).take(4).ifEmpty { listOf(step) },
-                box(json), json.optString("mistake").trim(),
+                box(json), json.optString("mistake").trim(), json.optString("recap").trim(),
             )
         }
     }

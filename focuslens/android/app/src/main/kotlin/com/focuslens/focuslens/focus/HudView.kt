@@ -19,14 +19,12 @@ fun HudScreen.toJson(cropHash: String?, attention: Boolean = false): JSONObject 
     when (this) {
         is HudScreen.Idle -> {
             o.put("s", "idle")
-            if (goal.isNotBlank()) put("anchor", Strings.anchor(goal))
-            put("title", if (paused) "${Strings.paused} · ${Strings.pausedHint}" else if (compact) "●" else "● ${Strings.appName} · ${Strings.idleHint}")
         }
         is HudScreen.Thinking -> { o.put("s", "thinking"); put("title", text) }
         is HudScreen.Hint -> {
             o.put("s", "hint")
             if (goal.isNotBlank()) put("anchor", Strings.anchor(goal))
-            put("text", text); put("crop", cropHash); put("formula", tex)
+            put("recap", recap); put("text", text); put("crop", cropHash); put("formula", tex)
             if (total > 1) put("progress", "$index/$total")
             put("footer", Strings.footerNext)
         }
@@ -51,7 +49,7 @@ fun HudScreen.toJson(cropHash: String?, attention: Boolean = false): JSONObject 
             put("footer", Strings.footerBack)
         }
         is HudScreen.Message -> { o.put("s", "message"); put("title", title); put("footer", body ?: Strings.footerClose) }
-        is HudScreen.Nudge -> { o.put("s", "nudge"); put("title", title); put("footer", Strings.footerNudge) }
+        is HudScreen.Nudge -> { o.put("s", "nudge"); put("kind", kind.name.lowercase()); put("title", title); put("footer", Strings.footerNudge) }
     }
     if (attention) o.put("attention", true)
     return o

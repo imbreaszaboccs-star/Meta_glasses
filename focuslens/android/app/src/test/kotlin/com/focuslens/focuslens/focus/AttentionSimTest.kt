@@ -20,7 +20,8 @@ class AttentionSimTest {
         private val rnd = Random(seed)
         val machine = AttentionMachine { t }
         val policy = NudgePolicy({ t }, machine)
-        private val pipe = ImuPipeline(machine, HeuristicClassifier(), { mode }, { 0.5f }, { t / 1000f })
+        private val pipe = ImuPipeline(machine, HeuristicClassifier(), { mode }, { speech }, { t / 1000f })
+        var speech = 0f
         var l1At = -1L
         val l2 = ArrayList<Pair<Long, NudgeKind?>>()
 
@@ -59,7 +60,7 @@ class AttentionSimTest {
                 pipe.add(sample(k, i / 30.0))
                 if (t / 1000 != tickSec) {
                     tickSec = t / 1000
-                    val out = policy.tick(machine.state, true) { null }
+                    val out = policy.tick(machine.state, true, mode == "lecture") { null }
                     if (out.level == 1 && l1At < 0) l1At = t
                     if (out.level == 2) l2 += t to out.kind
                 }
@@ -172,17 +173,17 @@ class AttentionSimTest {
         val m = AttentionMachine { t }
         val p = NudgePolicy({ t }, m)
         val key = { NudgeKind.KEY }
-        t = 60_000; assertEquals(0, p.tick(AttState.ENGAGED, true, key).level)            // first 5 min are quiet
-        t = 301_000; assertEquals(2, p.tick(AttState.ENGAGED, true, key).level)
-        t = 302_000; assertEquals(0, p.tick(AttState.ENGAGED, true, key).level)           // one L2 per 10 min
+        t = 60_000; assertEquals(0, p.tick(AttState.ENGAGED, true, false, key).level)            // first 5 min are quiet
+        t = 301_000; assertEquals(2, p.tick(AttState.ENGAGED, true, false, key).level)
+        t = 302_000; assertEquals(0, p.tick(AttState.ENGAGED, true, false, key).level)           // one L2 per 10 min
         t = 1_000_000; p.onUser(); t = 1_100_000
-        assertEquals(0, p.tick(AttState.ENGAGED, true, key).level)                        // 3 min after a pinch
-        t = 1_200_000; assertEquals(2, p.tick(AttState.ENGAGED, true, key).level)
-        t = 1_900_000; assertEquals(2, p.tick(AttState.ENGAGED, true, key).level)
-        t = 2_600_000; assertEquals(2, p.tick(AttState.ENGAGED, true, key).level)
-        t = 3_300_000; assertEquals(0, p.tick(AttState.ENGAGED, true, key).level)         // 4 per hour used up (301 s is still inside)
-        t = 4_000_000; assertEquals(2, p.tick(AttState.ENGAGED, true, key).level)
-        t = 4_700_000; assertEquals(0, p.tick(AttState.AWAY, true, key).level)            // whole AWAY quiet
+        assertEquals(0, p.tick(AttState.ENGAGED, true, false, key).level)                        // 3 min after a pinch
+        t = 1_200_000; assertEquals(2, p.tick(AttState.ENGAGED, true, false, key).level)
+        t = 1_900_000; assertEquals(2, p.tick(AttState.ENGAGED, true, false, key).level)
+        t = 2_600_000; assertEquals(2, p.tick(AttState.ENGAGED, true, false, key).level)
+        t = 3_300_000; assertEquals(0, p.tick(AttState.ENGAGED, true, false, key).level)         // 4 per hour used up (301 s is still inside)
+        t = 4_000_000; assertEquals(2, p.tick(AttState.ENGAGED, true, false, key).level)
+        t = 4_700_000; assertEquals(0, p.tick(AttState.AWAY, true, false, key).level)            // whole AWAY quiet
     }
 
     @Test fun autoModeLectureListeningOnBoardNeverTriggersStuck() {
@@ -205,17 +206,97 @@ class AttentionSimTest {
         assertTrue(s.l1At > 0)
     }
 
+    @Test fun readingNeverGetsStuck() {
+        val s = Sim(mode = "reading")
+        s.copy(120)
+        s.seg(Kind.STILL, 12.0 * 60)
+        assertTrue(s.machine.state != AttState.STUCK)
+        s.seg(Kind.WRITE, 20.0); s.seg(Kind.BOARD, 12.0 * 60)
+        assertTrue(s.machine.state != AttState.STUCK)
+        assertEquals(-1L, s.l1At)
+        assertTrue(s.l2.isEmpty())
+    }
+
+    @Test fun homeworkStuckNeedsQuietRoom() {
+        val s = Sim(); s.speech = 0.6f // noisy room
+        s.copy(120); s.seg(Kind.WRITE, 20.0)
+        s.seg(Kind.STILL, 10.0 * 60)
+        assertTrue(s.machine.state != AttState.STUCK)
+        assertEquals(-1L, s.l1At)
+    }
+
+    @Test fun homeworkLookingAroundIsNotStaring() {
+        val s = Sim()
+        s.copy(120); s.seg(Kind.WRITE, 20.0)
+        s.seg(Kind.LOOK, 10.0 * 60)
+        assertTrue(s.machine.state != AttState.STUCK)
+        assertEquals(-1L, s.l1At)
+    }
+
+    @Test fun lectureDistractedGivesLapseDotThenNudge() {
+        val s = Sim(mode = "lecture"); s.speech = 0.6f
+        s.copy(6 * 60)
+        s.seg(Kind.LOOK, 6.0 * 60)
+        assertTrue("L1 dot", s.l1At > 0)
+        assertEquals(1, s.l2.size)
+        assertEquals(NudgeKind.LAPSE, s.l2[0].second)
+        assertTrue(s.l2[0].first - s.l1At >= NudgePolicy.ESCALATE_MS)
+    }
+
+    @Test fun lapseDismissStretchesEscalateAndSwitchesOff() {
+        var t = 0L
+        val m = AttentionMachine { t }
+        val p = NudgePolicy({ t }, m)
+        val f = FloatArray(Features.NAMES.size).also { it[Features.IDX.getValue("speech_ratio")] = 0.6f }
+        val board = FloatArray(Act.entries.size).also { it[Act.BOARD.ordinal] = 0.9f }
+        // the lecturer talks throughout: a speech window right before every tick
+        fun tick(s: AttState): NudgePolicy.Out { m.onWindow(board, f, "lecture"); return p.tick(s, true, true) { null } }
+        t = NudgePolicy.QUIET_START_MS + 1
+        tick(AttState.DISTRACTED)                                       // episode starts, L1
+        t += NudgePolicy.ESCALATE_MS - 1_000
+        assertEquals(1, tick(AttState.DISTRACTED).level)
+        t += 1_000
+        assertEquals(NudgeKind.LAPSE, tick(AttState.DISTRACTED).kind)
+        p.onDismissed(NudgeKind.LAPSE)
+        t += NudgePolicy.QUIET_USER_MS + NudgePolicy.L2_GAP_MS
+        tick(AttState.ENGAGED)                                          // episode ends
+        tick(AttState.DISTRACTED)                                       // new episode, L1
+        t += (NudgePolicy.ESCALATE_MS * 1.2).toLong() - 1_000
+        assertEquals(1, tick(AttState.DISTRACTED).level)                // not yet: threshold is 20% longer
+        t += 1_000
+        assertEquals(2, tick(AttState.DISTRACTED).level)
+        p.onDismissed(NudgeKind.LAPSE); p.onDismissed(NudgeKind.LAPSE)
+        assertEquals(true, p.isOff(NudgeKind.LAPSE))
+        assertEquals(false, p.isOff(NudgeKind.STUCK))
+        assertEquals(0, tick(AttState.DISTRACTED).level)
+    }
+
+    @Test fun lectureBreakIsNoLapse() {
+        val s = Sim(mode = "lecture"); s.speech = 0.6f
+        s.copy(6 * 60)
+        s.speech = 0f                    // break: nobody talks, the student stares and looks around
+        s.seg(Kind.LOOK, 4.0 * 60)
+        s.seg(Kind.STILL, 6.0 * 60)
+        assertEquals(-1L, s.l1At)
+        assertEquals(emptyList<Any>(), s.l2)
+    }
+
+    @Test fun distractedOutsideLectureIsQuiet() {
+        val p = NudgePolicy({ 1_000_000L }, AttentionMachine { 1_000_000L })
+        assertEquals(0, p.tick(AttState.DISTRACTED, true, false) { null }.level)
+    }
+
     @Test fun repeatedNodsEveryFewSecondsTriggerDozing() {
         var t = 0L
         val m = AttentionMachine { t }
         val f = FloatArray(Features.NAMES.size)
         val nodProbs = FloatArray(Act.entries.size).also { it[Act.NOD.ordinal] = 0.9f }
         // Nod windows arriving every 3 seconds: 1st at 1s, 2nd at 4s (<5s gap, ignored), 3rd at 7s (>=5s from 1s, counted!)
-        t = 1_000L; m.onWindow(nodProbs, f, "auto", 300f)
+        t = 1_000L; m.onWindow(nodProbs, f, "auto")
         assertEquals(AttState.ENGAGED, m.state)
-        t = 4_000L; m.onWindow(nodProbs, f, "auto", 300f)
+        t = 4_000L; m.onWindow(nodProbs, f, "auto")
         assertEquals(AttState.ENGAGED, m.state)
-        t = 7_000L; m.onWindow(nodProbs, f, "auto", 300f)
+        t = 7_000L; m.onWindow(nodProbs, f, "auto")
         assertEquals(AttState.DOZING, m.state)
     }
 }

@@ -5,10 +5,10 @@ import kotlin.math.sqrt
 
 /**
  * Energy-based end-of-speech detector over PCM16 chunks. The threshold adapts to the first 300 ms.
- * Ends after 1.2 s of silence that follows speech, after 8 s, or after 4 s without any speech.
- * Feed it from the mic thread; [result] is the PCM (or null = nothing heard) once [feed] returned true.
+ * Ends after 1.2 s of silence that follows speech, after [maxMs], or after 4 s without any speech; [finish] ends it on demand.
+ * Feed it from the mic thread; [result] is the PCM (or null = nothing heard) once [feed] or [finish] returned true.
  */
-class Dictation {
+class Dictation(private val maxMs: Int = MAX_MS) {
     private val pcm = ByteArrayOutputStream()
     private var ms = 0
     private var noise = 0.0
@@ -20,7 +20,7 @@ class Dictation {
     var result: ByteArray? = null
         private set
 
-    fun feed(b: ByteArray, n: Int): Boolean {
+    @Synchronized fun feed(b: ByteArray, n: Int): Boolean {
         if (finished) return false
         pcm.write(b, 0, n)
         val dt = n / 32 // 16 kHz × 2 bytes = 32 bytes per ms
@@ -33,9 +33,16 @@ class Dictation {
         }
         ms += dt
         if (r > threshold) { loudRun++; quietMs = 0; if (loudRun >= 2) speech = true } else { loudRun = 0; if (speech) quietMs += dt }
-        val end = (speech && quietMs >= SILENCE_MS) || ms >= MAX_MS || (!speech && ms >= NO_SPEECH_MS)
+        val end = (speech && quietMs >= SILENCE_MS) || ms >= maxMs || (!speech && ms >= NO_SPEECH_MS)
         if (end) { finished = true; result = if (speech) pcm.toByteArray() else null }
         return end
+    }
+
+    /** Ends now (user pinched): keeps what was captured if it is at least [MIN_MS] long, else nothing heard. */
+    @Synchronized fun finish() {
+        if (finished) return
+        finished = true
+        result = if (ms >= MIN_MS) pcm.toByteArray() else null
     }
 
     private fun rms(b: ByteArray, n: Int): Double {
@@ -50,7 +57,9 @@ class Dictation {
         return sqrt(sum / (n / 2))
     }
 
-    private companion object {
+    companion object {
+        const val NOTE_MAX_MS = 30_000
+        const val MIN_MS = 500
         const val CALIBRATE_MS = 300
         const val SILENCE_MS = 1_200
         const val MAX_MS = 8_000

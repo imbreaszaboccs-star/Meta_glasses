@@ -55,7 +55,7 @@ object RemoteProto {
             a.has("goal") && !a.isNull("goal") && a.opt("goal") !is String -> "bad goal"
             else -> null
         }
-        "stop_focus", "help", "bookmark", "pause_mic", "resume_mic", "review_load", "refresh", "last_hint", "next", "reconnect", "inbox_sync" -> null
+        "stop_focus", "help", "bookmark", "pause_mic", "resume_mic", "review_load", "refresh", "last_hint", "next", "reconnect", "inbox_sync", "voice_note" -> null
         "card_reviewed" -> when {
             str(a, "id", 100) == null -> "bad id"
             a.opt("reviewed") !is Boolean -> "bad reviewed"
@@ -79,6 +79,7 @@ object RemoteProto {
             else -> null
         }
         "inbox_delete" -> if (str(a, "id", 100) == null) "bad id" else null
+        "sim" -> if ((a.opt("name") as? String) !in FocusEngine.SIMS) "bad name" else null
         "gesture" -> if ((a.opt("g") as? String) !in GESTURES) "bad gesture" else null
         else -> "unknown command"
     }
@@ -336,6 +337,7 @@ class RemoteLink(private val app: Context, private val engine: FocusEngine) : En
                 rep.text = Strings.noteSaved(t)
                 null
             }
+            "voice_note" -> main { engine.voiceNote() }
             "last_hint" -> { rep.text = main { engine.lastHintText() } ?: Strings.noHintYet; null }
             "next" -> main { if (!engine.isRunning) "no focus block running" else { engine.next(); null } }
             "reconnect" -> main { engine.reconnectGlasses(); null }
@@ -349,6 +351,7 @@ class RemoteLink(private val app: Context, private val engine: FocusEngine) : En
             "inbox_done" -> { engine.inbox.setDone(a.getString("id"), a.getBoolean("done")); null }
             "inbox_delete" -> { engine.inbox.delete(a.getString("id")); null }
             "review_load" -> { startReview(); null }
+            "sim" -> main { engine.simulate(a.getString("name")) }
             "gesture" -> main { engine.onGesture(Gesture.valueOf(a.getString("g").uppercase()), fromWeb = true); null }
             else -> null // refresh: the view publish after the ack is the answer
         }
@@ -477,6 +480,7 @@ class RemoteLink(private val app: Context, private val engine: FocusEngine) : En
             "imu" to obj("collect" to cfg["collect"], "label" to focus["imuLabel"]),
             "integrations" to obj("todoist" to Integrations.todoistConfigured),
         )
+        o.put("dev", BuildConfig.DEBUG)
         o.put("hud", hudJson())
         val state = RemoteProto.trimState(o, RemoteProto.MAX_STATE_BYTES - 4_096)
         val acksJson = synchronized(acks) { JSONArray(acks.toList()) }
@@ -486,7 +490,7 @@ class RemoteLink(private val app: Context, private val engine: FocusEngine) : En
     // -- HUD view + crops --
 
     private fun hudJson(): JSONObject {
-        val screen = engine.hudScreen ?: HudScreen.Idle(compact = false, paused = false)
+        val screen = engine.hudScreen ?: HudScreen.Idle()
         val bmp = screen.cropBitmap()
         return screen.toJson(bmp?.let { cropHash(it) }, engine.attention)
     }

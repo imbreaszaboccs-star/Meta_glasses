@@ -3,9 +3,6 @@ package com.focuslens.focuslens.focus
 /** Native-side text (HUD + notification). The app UI is English; only the hint language is configurable. */
 object Strings {
     const val appName = "FocusLens"
-    const val idleHint = "pinch help · ↑ blocks · ↓ note"
-    const val paused = "Paused"
-    const val pausedHint = "microphone is off"
     const val looking = "Looking…"
     const val listeningOnly = "Listening…"
     const val stillThinking = "Still thinking…"
@@ -29,16 +26,17 @@ object Strings {
 
     // quest / note / goal
     const val footerQuest = "pinch = done ✓ · ←→ steps"
-    const val footerCancel = "pinch cancel"
     const val checking = "Checking…"
     const val checkFailed = "Couldn't check, try again."
     const val noPhoto = "Couldn't take a photo."
     const val questDone = "✓ Done!"
     const val stepDone = "Step done"
     const val notYet = "Not yet."
-    const val sayIt = "🎙 Say it…"
+    const val dictating = "🎙 Listening…"
+    const val footerListening = "pinch = done · ← cancel"
+    const val dictateNeedsSession = "Start a session to dictate"
+    const val dictateBusy = "Busy, try again in a moment"
     const val saving = "Saving…"
-    const val bookmarking = "Saving snapshot…"
     const val bookmarked = "✓ Saved for later"
     const val nothingHeard = "Nothing heard"
     const val micOff = "The microphone is off."
@@ -51,6 +49,10 @@ object Strings {
     fun timePulse(mins: Int) = "$mins min in session"
 
     // Meta AI connector answers (spoken back by Meta AI)
+    const val sessionStarted = "Session started"
+    const val sessionStartedHint = "pinch = help · capture = save"
+    const val micPausedMsg = "Mic paused"
+    const val micOnMsg = "Mic on"
     const val focusStarted = "Session started."
     const val focusStopped = "Session stopped."
     const val noHintYet = "No hint yet."
@@ -58,10 +60,11 @@ object Strings {
     fun noteSaved(text: String) = "Saved: ${text.take(300)}"
 
     // proactive nudges
-    const val nudgeKey = "💡 Key point just now"
-    const val nudgeStuck = "Stuck? Try a smaller step"
-    const val nudgeDozing = "Eyes heavy? Take a breath"
-    const val footerNudge = "pinch yes · ← no"
+    const val nudgeKey = "Key point just now · Pinch = summary"
+    const val nudgeStuck = "Stuck? Pinch = smaller step"
+    const val nudgeLapse = "Lost the thread? Pinch = summary"
+    const val nudgeDozing = "Still with us? Pinch = recap"
+    const val footerNudge = "← dismiss"
 
     // notification
     const val channelFocus = "Focus"

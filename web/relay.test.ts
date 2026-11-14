@@ -118,9 +118,9 @@ describe('relay', () => {
     { type: 'rm -rf' }, { type: 'start_focus', args: { mode: 'pirate' } }, { type: 'start_focus', args: { evil: 1 } },
     { type: 'inbox_done', args: { id: '../x', done: true } }, { type: 'inbox_done', args: { id: 'abc' } },
     { type: 'set_config', args: { nudges: 'yes please' } }, { type: 'help', args: [1] }, { type: 'gesture', args: { g: 'jump' } },
-    { type: 'gesture' },
+    { type: 'gesture' }, { type: 'sim' }, { type: 'sim', args: { name: 'reboot' } },
     { type: 'set_config', args: { bufferSec: 999 } }, { type: 'set_config', args: { language: 'xx' } },
-    { type: 'imu_label', args: { label: 'dance' } }, { type: 'card_delete', args: { id: '../../x' } }, { type: 'web_seen', args: {} },
+    { type: 'imu_label', args: { label: 'dance' } }, { type: 'card_delete', args: { id: '../../x' } }, { type: 'web_seen', args: {} }, { type: 'voice_note', args: { text: 'x' } },
   ])('command whitelist rejects %j', async (cmd) => {
     const e = env();
     const { p, t } = await e.pairedWeb();
@@ -144,6 +144,23 @@ describe('relay', () => {
     await e.call('POST', 'view', { h: e.phoneH(p), json: { state: {}, acks: [{ id: r.data.id, ok: true }, { id: 'x', ok: false, error: 'no‮' }] } });
     const acks = (await e.call('GET', 'state', { h: e.webH(t) })).data.acks;
     expect(acks).toEqual([{ id: r.data.id, ok: true, error: null }, { id: 'x', ok: false, error: 'no' }]);
+  });
+
+  it('voice_note takes no args and is delivered', async () => {
+    const e = env();
+    const { p, t } = await e.pairedWeb();
+    await e.call('POST', 'view', { h: e.phoneH(p), json: { state: {} } });
+    expect((await e.call('POST', 'cmd', { h: e.webH(t), json: { type: 'voice_note', args: {} } })).status).toBe(202);
+    expect((await e.call('GET', 'poll', { h: e.phoneH(p) })).data.cmds.map((c: any) => c.type)).toEqual(['voice_note']);
+  });
+
+  it('sim command accepts a known scenario name', async () => {
+    const e = env();
+    const { p, t } = await e.pairedWeb();
+    await e.call('POST', 'view', { h: e.phoneH(p), json: { state: {} } });
+    const r = await e.call('POST', 'cmd', { h: e.webH(t), json: { type: 'sim', args: { name: 'lapse_l2' } } });
+    expect(r.status).toBe(202);
+    expect((await e.call('GET', 'poll', { h: e.phoneH(p) })).data.cmds).toEqual([{ id: r.data.id, type: 'sim', args: { name: 'lapse_l2' } }]);
   });
 
   it('unpair revokes web tokens, wipes live data and the id cannot be re-paired', async () => {

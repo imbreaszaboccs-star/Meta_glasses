@@ -1,6 +1,6 @@
 package com.focuslens.focuslens.focus
 
-enum class NudgeKind { KEY, STUCK, DOZING }
+enum class NudgeKind { KEY, STUCK, LAPSE, DOZING }
 
 /**
  * Decides WHEN to nudge; FocusEngine decides whether the HUD is free and shows it. Pure, clock injected.

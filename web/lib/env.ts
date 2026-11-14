@@ -12,6 +12,7 @@ export const env = () => ({
   hintThinking: str("HINT_THINKING", "minimal"),
   hintFallbackModel: str("HINT_FALLBACK_MODEL", "gemini-3.1-flash-lite"),
   hintFallbackThinking: str("HINT_FALLBACK_THINKING", "minimal"),
+  transcribeModel: str("TRANSCRIBE_MODEL", "gemini-3.5-transcribe"),
   ttsModel: str("TTS_MODEL", "gemini-3.8-flash-lite-tts"),
   ttsVoice: str("TTS_VOICE", "Kore"),
   maxAudioMb: num("MAX_AUDIO_MB", 4), // Vercel request body limit is 4.5 MB

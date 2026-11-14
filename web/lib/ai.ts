@@ -65,6 +65,8 @@ and is also \`next_step\`. For one quick action return a single step.
 - do NOT give away the whole solution, only the nearest steps
 - if there is a mistake in the photo, the first step says exactly where (line, symbol)
 - if they lost the thread of a lecture, say what was just said / what to write down
+- LECTURE: \`recap\` = what was just explained in the last ~60 s (max 25 words); steps[0] / next_step = the ONE
+  concrete thing to write down now (put a formula into \`formula\`). In every other situation \`recap\` = "".
 - if the photo and audio are unclear, give the safest small step (e.g. "Write down the formula on the left of the board.")
 
 ${FORMULA_RULES}
@@ -167,6 +169,7 @@ const HINT_SCHEMA = {
     injection_suspected: FLAG,
     next_step: { type: "string", description: "steps[0], max 20 words." },
     steps: { type: "array", items: STR, description: "1-4 micro-steps, each max 20 words." },
+    recap: { type: "string", description: "Lecture only: what was just explained in the last ~60 s, max 25 words; empty string otherwise." },
     formula: { type: "string", description: "LaTeX math to write (no $), or empty string." },
     focus_box: BOX,
     mistake: { type: "string", description: "Short generic mistake type, or empty." },
@@ -192,7 +195,7 @@ const HINT_SCHEMA = {
       required: ["title", "summary", "correction", "transcript_tail", "speakers"],
     },
   },
-  required: ["check", "situation", "injection_suspected", "next_step", "steps", "formula", "focus_box", "mistake", "card"],
+  required: ["check", "situation", "injection_suspected", "next_step", "steps", "recap", "formula", "focus_box", "mistake", "card"],
 };
 
 const CHECK_SCHEMA = {
@@ -232,7 +235,7 @@ export type Card = {
   title: string; summary: string; correction: string; transcript_tail: string; situation: string; speakers: Speaker[];
 };
 export type Hint = {
-  next_step: string; steps: string[]; formula: string; focus_box: number[] | null; mistake: string; card: Card;
+  next_step: string; steps: string[]; recap: string; formula: string; focus_box: number[] | null; mistake: string; card: Card;
 };
 export type Check = { done: boolean; feedback: string; formula: string; focus_box: number[] | null; mistake: string };
 export type Dump = { text: string };
@@ -348,8 +351,11 @@ export function guardHint(raw: Raw, lang: string): [Hint, Record<string, unknown
     situation,
     speakers,
   };
+  const [recapT, recapHijacked] = shortText(raw.recap ?? "", 200, 25);
+  replaced ||= recapHijacked;
+  const recap = situation === "lecture" && !recapHijacked ? recapT : "";
   const hint: Hint = {
-    next_step: steps[0], steps, formula: safeLatex(raw.formula ?? ""),
+    next_step: steps[0], steps, recap, formula: safeLatex(raw.formula ?? ""),
     focus_box: safeBox(raw.focus_box), mistake: clean(raw.mistake ?? "", 80), card,
   };
   return [hint, {
@@ -381,6 +387,20 @@ export function guardDump(raw: Raw): [Dump, Record<string, unknown>] {
   return [{ text: hijacked ? "" : text }, {
     injection_suspected: raw.injection_suspected === true, empty: !text || hijacked,
   }];
+}
+
+/** Voice-note transcript: verbatim, but no links/control chars, one line, max 300 chars (relay/inbox note limit). */
+export function guardTranscript(text: unknown): string {
+  return clean(text, 299);
+}
+
+/** The transcribe model returns the text in `audioTranscription` parts, not in `text`; plain text parts are the fallback. */
+export function extractTranscript(resp: { candidates?: { content?: { parts?: unknown[] } }[] }): string {
+  const parts = (resp.candidates?.[0]?.content?.parts ?? []).filter(isObj);
+  const pick = (f: (p: Raw) => unknown) =>
+    parts.map(f).filter((t): t is string => typeof t === "string" && t.trim() !== "").join(" ");
+  return pick((p) => (isObj(p.audioTranscription) ? p.audioTranscription.text : undefined)) ||
+    pick((p) => (p.thought ? undefined : p.text));
 }
 
 export function guardReview(raw: Raw): [Review, Record<string, unknown>] {
@@ -500,6 +520,17 @@ export class Gemini {
     });
     const [dump, flags] = guardDump(raw);
     return [dump, { ...meta, ...flags }];
+  }
+
+  /** Dedicated transcription model (no prompt, no JSON schema): verbatim text of a voice note. */
+  async transcribe(o: { model: string; audio: Buffer; audioMime: string }): Promise<[string, Record<string, unknown>]> {
+    const resp = await this.client.models.generateContent({
+      model: o.model,
+      contents: [{ role: "user", parts: [blob(o.audio, o.audioMime), { text: "Transcribe." }] }],
+    });
+    const text = guardTranscript(extractTranscript(resp));
+    const u = resp.usageMetadata;
+    return [text, { model: o.model, in_tokens: u?.promptTokenCount ?? null, out_tokens: u?.candidatesTokenCount ?? null, empty: !text }];
   }
 
   async review(o: { model: string; thinking: string; locale: string; items: object[] }): Promise<[Review, Record<string, unknown>]> {

@@ -110,6 +110,7 @@ function only(spec: Record<string, (v: unknown) => unknown | undefined>, require
 }
 const isMode = (v: unknown) => (typeof v === 'string' && MODES.includes(v) ? v : undefined);
 const oneOf = <T>(...xs: T[]) => (v: unknown) => (xs.includes(v as T) ? v : undefined);
+const SIMS = ['start', 'lecture_hint', 'homework_quest', 'bookmark', 'milestone', 'stuck_l1', 'stuck_l2', 'lapse_l2', 'key_l2', 'doze_l2', 'stop'];
 const ACTS = ['board', 'notes', 'switching', 'still', 'looking_around', 'nod', 'walking', 'none'];
 const isBool = (v: unknown) => (typeof v === 'boolean' ? v : undefined);
 const isItem = (v: unknown) => (typeof v === 'string' && ITEM_RE.test(v) ? v : undefined);
@@ -135,8 +136,11 @@ export const COMMANDS: Record<string, Validator> = {
   // v2: the web app owns the display, so glasses input (arrows/Enter/back) is forwarded to FocusEngine.
   gesture: only({ g: (v) => (typeof v === 'string' && GESTURES.includes(v) ? v : undefined) }, ['g']),
   // v2: Meta AI connector tools (lib/mcp.ts); the phone answers them via POST res.
+  sim: only({ name: oneOf(...SIMS) }, ['name']),
   add_note: only({ text: isNote }, ['text']),
   last_hint: only({}),
+  // Glasses Notes page: pinch -> phone records, transcribes and saves a voice note.
+  voice_note: only({}),
 };
 
 /** Queues a validated command; `reply` asks the phone to POST its answer to res. Null if args are invalid. */

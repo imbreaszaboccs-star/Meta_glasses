@@ -9,6 +9,7 @@ import android.os.Build
 import android.os.PowerManager
 import android.os.SystemClock
 import android.util.Log
+import com.focuslens.focuslens.BuildConfig
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import com.meta.wearable.dat.core.Wearables
@@ -113,7 +114,7 @@ class FocusEngine(private val app: Context) {
 
     // -- hint state machine --
     enum class Phase { IDLE, THINKING, SHOWN, MESSAGE, QUEST, CHECKING, DUMP, NUDGE }
-    private data class Shown(val text: String, val cardId: String, val formula: Bitmap? = null, val crop: Bitmap? = null, val tex: String = "")
+    private data class Shown(val text: String, val cardId: String, val formula: Bitmap? = null, val crop: Bitmap? = null, val tex: String = "", val recap: String = "")
 
     // -- quest: a hint with ≥ 2 micro-steps; pinch = "done, check me" --
     private class Quest(val cardId: String, val title: String, val steps: List<String>) {
@@ -351,7 +352,6 @@ class FocusEngine(private val app: Context) {
         startImu(r)
         history.clear(); recent.clear(); viewIndex = -1
         panel = null
-        prefs.edit().putInt("blocksStarted", prefs.getInt("blocksStarted", 0) + 1).apply()
         writeSession(r, ended = false)
 
         audio = chooseAudio()
@@ -362,7 +362,7 @@ class FocusEngine(private val app: Context) {
         startMic()
         attachGlasses()
         speaker.warmUp()
-        if (phase == Phase.IDLE) showIdle()
+        if (phase == Phase.IDLE) showMessage(Strings.sessionStarted, Strings.sessionStartedHint, autoHideMs = 3_000)
         tickJob = scope.launch { while (isActive) { delay(1_000); nudgeTick(); timePulseTick(); displayTick(); emitStatus() } }
         log("focus", "started ${r.mode}")
         emitStatus()
@@ -372,7 +372,7 @@ class FocusEngine(private val app: Context) {
     fun stopFocus(reason: String = "user") {
         val r = run ?: return
         hintJob?.cancel(); hideJob?.cancel(); reconnectJob?.cancel(); tickJob?.cancel()
-        checkJob?.cancel(); dumpJob?.cancel(); quest = null
+        checkJob?.cancel(); dumpJob?.cancel(); quest = null; simPhoto = null; simDotUntil = 0L
         nudgeJob?.cancel(); nudgeKind = null
         stopImu()
         speaker.stop()
@@ -489,7 +489,7 @@ class FocusEngine(private val app: Context) {
         micPaused = true
         nudges.onMicPaused()
         log("focus", "mic paused (buffer wiped)")
-        if (phase == Phase.IDLE) showIdle()
+        if (phase == Phase.IDLE) showMessage(Strings.micPausedMsg, null, autoHideMs = 2_000)
         emitStatus()
     }
 
@@ -498,7 +498,7 @@ class FocusEngine(private val app: Context) {
         micPaused = false
         startMic()
         log("focus", "mic resumed")
-        if (phase == Phase.IDLE) showIdle()
+        if (phase == Phase.IDLE) showMessage(Strings.micOnMsg, null, autoHideMs = 2_000)
         emitStatus()
     }
 
@@ -610,6 +610,7 @@ class FocusEngine(private val app: Context) {
             lastNativeGestureAt = now
         }
         event("gesture", mapOf("name" to g.name))
+        simDotUntil = 0L
         if (testMode) {
             if (g == Gesture.SELECT) showMessage(Strings.itWorks, null, autoHideMs = 4_000)
             return
@@ -619,7 +620,7 @@ class FocusEngine(private val app: Context) {
         if (panel != null || panelLoading) return onPanelGesture(g)
         if (phase == Phase.NUDGE) return onNudgeGesture(g)
         when (phase) {
-            Phase.DUMP -> return if (g == Gesture.SELECT || g == Gesture.BACK) { dumpJob?.cancel(); endDump() } else Unit
+            Phase.DUMP -> return onDumpGesture(g)
             Phase.CHECKING -> return if (g == Gesture.BACK) cancelCheck() else Unit
             Phase.QUEST -> return onQuestGesture(g)
             else -> Unit
@@ -742,11 +743,11 @@ class FocusEngine(private val app: Context) {
         val known = mistakes.list()
         val recentJson = JSONArray(recent.toList())
         if (phase == Phase.IDLE || phase == Phase.MESSAGE) {
-            showMessage(Strings.bookmarking, null, autoHideMs = 2_000)
+            showMessage(Strings.bookmarked, null, autoHideMs = 2_000)
         }
         scope.launch {
             try {
-                val photoD = async { g?.capturePhoto() }
+                val photoD = async { takePhoto(g) }
                 val pcm = mic?.takeIf { it.isListening && it.bufferedSeconds >= 1 }?.snapshot()
                 val audioD = async(Dispatchers.Default) {
                     pcm?.let { AudioCodec.encode(it.takeLast(60 * MicRing.BYTES_PER_SECOND), MicRing.SAMPLE_RATE, app.cacheDir) }
@@ -779,9 +780,6 @@ class FocusEngine(private val app: Context) {
                 run?.let { it.hintCount++; writeSession(it, ended = false) }
                 event("card", mapOf("id" to id, "status" to CardStore.STATUS_PENDING))
                 RetryWorker.enqueue(app, now = true)
-                if (phase == Phase.IDLE || phase == Phase.MESSAGE) {
-                    showMessage(Strings.bookmarked, null, autoHideMs = 2_000)
-                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -856,7 +854,7 @@ class FocusEngine(private val app: Context) {
             var cardId: String? = chainCardId
             var completed = false
             try {
-                val photoD = async { g?.capturePhoto() }
+                val photoD = async { takePhoto(g) }
                 val pcm = mic?.takeIf { it.isListening && it.bufferedSeconds >= 1 }?.snapshot()
                 val audioD = async(Dispatchers.Default) {
                     pcm?.let { AudioCodec.encode(it, MicRing.SAMPLE_RATE, app.cacheDir) }
@@ -936,7 +934,8 @@ class FocusEngine(private val app: Context) {
         if (res.mistake.isNotBlank()) mistakes.add(res.mistake)
         val situation = res.card.optString("situation").ifBlank { config.mode }
         run?.situation = situation
-        val isQuest = res.steps.size >= 2 && situation != "lecture"
+        val isQuest = situation != "lecture" && (res.steps.size >= 2 || (res.steps.size == 1 && situation in setOf("homework", "desk")))
+        if (!isQuest) simPhoto = null
         withContext(Dispatchers.IO) {
             cards.update(id) { c ->
                 cards.putFormula(id, c, res.formula, res.formulaPng.takeIf { formula != null })
@@ -953,7 +952,7 @@ class FocusEngine(private val app: Context) {
                 c.remove("request")
             }
         }
-        history += Shown(res.nextStep, id, formula, crop, res.formula)
+        history += Shown(res.nextStep, id, formula, crop, res.formula, res.recap)
         while (history.size > HISTORY) history.removeAt(0)
         recent += JSONObject().put("situation", res.card.optString("situation").ifBlank { config.mode })
             .put("title", res.card.optString("title")).put("step", res.nextStep)
@@ -1062,6 +1061,7 @@ class FocusEngine(private val app: Context) {
 
     private fun toIdle() {
         quest = null
+        simPhoto = null
         phase = Phase.IDLE
         showIdle()
         emitStatus()
@@ -1103,7 +1103,7 @@ class FocusEngine(private val app: Context) {
         val known = mistakes.list()
         checkJob = scope.launch {
             try {
-                val photo = g?.capturePhoto()
+                val photo = takePhoto(g)
                 if (photo == null) { q.feedback = Strings.noPhoto; return@launch showQuest() }
                 val res = withContext(Dispatchers.IO) { HintClient.check(photo, cfg.language, goal, known, q.title, q.steps, q.index) }
                 val ok = res.ok
@@ -1166,6 +1166,27 @@ class FocusEngine(private val app: Context) {
 
     // -- brain dump / focus anchor: record one short utterance from the phone mic, send it to /dump --
 
+    /** Phone-side entry for the glasses Notes page ("voice_note"). Null = started, else the error for the ack. */
+    fun voiceNote(): String? = when {
+        run == null -> Strings.dictateNeedsSession // the mic is only open during a session (no mic-type service otherwise)
+        phase == Phase.DUMP -> null
+        phase == Phase.THINKING || phase == Phase.CHECKING -> Strings.dictateBusy
+        mic?.isListening != true -> Strings.micOff
+        else -> { startDump("task"); null }
+    }
+
+    private var dumpKind = ""
+    private var dumpCap: Dictation? = null
+
+    /** Goal: pinch/back = skip. Note: pinch = finish now and send, left/back = cancel. */
+    private fun onDumpGesture(g: Gesture) {
+        when {
+            dumpKind == "task" && g == Gesture.SELECT -> dumpCap?.let { it.finish(); dumpDone?.complete(it.result) }
+            g == Gesture.SELECT || g == Gesture.BACK || (dumpKind == "task" && g == Gesture.LEFT) -> { dumpJob?.cancel(); endDump() }
+        }
+    }
+    private var dumpDone: CompletableDeferred<ByteArray?>? = null
+
     private fun startDump(kind: String) {
         val m = mic?.takeIf { it.isListening }
         if (m == null) {
@@ -1178,18 +1199,19 @@ class FocusEngine(private val app: Context) {
         phase = Phase.DUMP
         val isGoal = kind == "goal"
         showHud(HudScreen.Message(
-            if (isGoal) Strings.goalPrompt else Strings.sayIt,
-            if (isGoal) Strings.goalPromptBody else Strings.footerCancel,
+            if (isGoal) Strings.goalPrompt else Strings.dictating,
+            if (isGoal) Strings.goalPromptBody else Strings.footerListening,
         ))
         emitStatus()
-        val cap = Dictation()
+        val cap = if (isGoal) Dictation() else Dictation(Dictation.NOTE_MAX_MS)
         val done = CompletableDeferred<ByteArray?>()
+        dumpKind = kind; dumpCap = cap; dumpDone = done
         val prev = m.listener
         val tap: (ByteArray, Int) -> Unit = { b, n -> prev?.invoke(b, n); if (cap.feed(b, n)) done.complete(cap.result) }
         m.listener = tap
         dumpJob = scope.launch {
             try {
-                runDump(kind, withTimeoutOrNull(DUMP_TIMEOUT_MS) { done.await() })
+                runDump(kind, withTimeoutOrNull(if (isGoal) DUMP_TIMEOUT_MS else NOTE_TIMEOUT_MS) { done.await() })
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -1250,11 +1272,13 @@ class FocusEngine(private val app: Context) {
     /** Once a second: NudgePolicy decides (attention dot, or a Nudge screen when the HUD is free: idle or in a quest, nothing on top). */
     private fun nudgeTick() {
         if (run == null) return
-        if (!config.nudges) return setAttention(false)
+        val sim = SystemClock.elapsedRealtime() < simDotUntil
+        if (!config.nudges) return setAttention(sim)
         val free = (phase == Phase.IDLE || phase == Phase.QUEST) && panel == null && !panelLoading &&
             !testMode && showsHud(glasses)
-        val out = policy.tick(machine.state, free) { nudges.tick() }
-        setAttention(out.level == 1)
+        val lecture = run?.situation == "lecture" || config.mode == "lecture"
+        val out = policy.tick(machine.state, free, lecture) { nudges.tick() }
+        setAttention(out.level == 1 || sim)
         if (out.level == 2) out.kind?.let(::showNudge)
     }
 
@@ -1266,7 +1290,7 @@ class FocusEngine(private val app: Context) {
         if (mins >= 30 && mins % 30 == 0 && mins != r.lastPulseMin) {
             r.lastPulseMin = mins
             log("info", "time pulse: ${mins}m")
-            showMessage(Strings.timePulse(mins), null, autoHideMs = 3_500L)
+            showMessage(Strings.timePulse(mins), null, autoHideMs = 3_000L)
         }
     }
 
@@ -1274,6 +1298,7 @@ class FocusEngine(private val app: Context) {
         if (on == attentionDot) return
         attentionDot = on
         log("attention", "dot ${if (on) "on" else "off"}")
+        if (phase == Phase.IDLE) showIdle()
         listeners.forEach { it.onHud() }
     }
 
@@ -1285,7 +1310,7 @@ class FocusEngine(private val app: Context) {
         val rec = recorder
         val model = runCatching { app.assets.open("activity_mlp.json").bufferedReader().use { it.readText() } }.getOrNull()
         var logged = AttState.ENGAGED // touched on the IMU thread only
-        imuPipe = ImuPipeline(machine, Classifiers.create(model) { log("info", it) }, { config.mode },
+        imuPipe = ImuPipeline(machine, Classifiers.create(model) { log("info", it) }, { run?.situation?.takeIf { it in SITUATIONS } ?: config.mode },
             { mic?.speech?.ratio() ?: 0f }, { (clock() - userAt) / 1000f }) { w ->
             rec?.window(w)
             if (w.state != logged) { logged = w.state; val st = w.state; scope.launch { log("attention", st.name) } }
@@ -1313,14 +1338,50 @@ class FocusEngine(private val app: Context) {
         log("attention", "label ${l ?: "cleared"}")
     }
 
+    // -- debug scenario simulator (no display glasses needed): RemoteLink "sim" --
+    @Volatile private var simPhoto: ByteArray? = null
+    @Volatile private var simKeep = false // keep simPhoto for the quest's follow-up checks
+    @Volatile private var simDotUntil = 0L
+
+    private suspend fun takePhoto(g: GlassesSession?): ByteArray? =
+        simPhoto?.also { if (!simKeep) simPhoto = null } ?: g?.capturePhoto()
+
+    private fun simAsset(name: String): ByteArray? =
+        runCatching { app.assets.open("sim/$name").use { it.readBytes() } }.onFailure { log("error", "sim asset $name: $it") }.getOrNull()
+
+    /** Debug only. Returns null when fine, else the error for the ack. Main thread. */
+    fun simulate(name: String): String? {
+        if (!BuildConfig.DEBUG) return "sim is debug-only"
+        if (name !in SIMS) return "unknown sim: $name"
+        log("sim", name)
+        if (name == "stop") { stopFocus("sim"); return null }
+        if (name == "start") { if (run != null) stopFocus("sim"); return startFocus(null) }
+        if (run == null) startFocus(null)
+        when (name) {
+            "lecture_hint" -> { simPhoto = simAsset("lecture.jpg"); simKeep = false; help("sim") }
+            "homework_quest" -> { simPhoto = simAsset("homework.jpg"); simKeep = true; help("sim") }
+            "bookmark" -> bookmark("sim")
+            "milestone" -> showMessage(Strings.timePulse(30), null, 3_000)
+            "stuck_l1" -> { simDotUntil = SystemClock.elapsedRealtime() + 60_000; setAttention(true) }
+            "stuck_l2" -> showNudge(NudgeKind.STUCK)
+            "lapse_l2" -> showNudge(NudgeKind.LAPSE)
+            "key_l2" -> showNudge(NudgeKind.KEY)
+            "doze_l2" -> showNudge(NudgeKind.DOZING)
+        }
+        return null
+    }
+
     private fun showNudge(k: NudgeKind) {
         hideJob?.cancel(); speaker.stop()
         nudgeKind = k
         phase = Phase.NUDGE
         log("nudge", "$k shown")
         recorder?.event("nudge_shown")
-        val title = when (k) { NudgeKind.KEY -> Strings.nudgeKey; NudgeKind.STUCK -> Strings.nudgeStuck; NudgeKind.DOZING -> Strings.nudgeDozing }
-        showHud(HudScreen.Nudge(title))
+        val title = when (k) {
+            NudgeKind.KEY -> Strings.nudgeKey; NudgeKind.STUCK -> Strings.nudgeStuck
+            NudgeKind.LAPSE -> Strings.nudgeLapse; NudgeKind.DOZING -> Strings.nudgeDozing
+        }
+        showHud(HudScreen.Nudge(title, k))
         if (k == NudgeKind.DOZING && config.dozeSound) scope.launch { speaker.speak(title, config.language, hasDisplay = true) }
         nudgeJob?.cancel()
         nudgeJob = scope.launch {
@@ -1344,12 +1405,12 @@ class FocusEngine(private val app: Context) {
                 policy.onAccepted(k); recorder?.event("nudge_accepted")
                 when (k) {
                     NudgeKind.KEY -> { quest = null; runHint(null, ask = "rescue") }
+                    NudgeKind.LAPSE, NudgeKind.DOZING -> runHint(null, ask = "rescue")
                     NudgeKind.STUCK -> {
                         val q = quest
                         if (q == null) runHint(null, ask = "rescue")
                         else runHint(q.cardId, ask = "smaller", prevOverride = q.steps) // result replaces the quest
                     }
-                    NudgeKind.DOZING -> endNudge()
                 }
             }
             Gesture.LEFT, Gesture.BACK -> { log("nudge", "$k dismissed"); policy.onDismissed(k); recorder?.event("nudge_dismissed"); endNudge() }
@@ -1363,7 +1424,7 @@ class FocusEngine(private val app: Context) {
         val h = history.getOrNull(viewIndex) ?: return
         phase = Phase.SHOWN
         lastMessage = null
-        showHud(HudScreen.Hint(h.text, viewIndex + 1, history.size, h.formula, h.crop, run?.goal.orEmpty(), h.tex))
+        showHud(HudScreen.Hint(h.text, viewIndex + 1, history.size, h.formula, h.crop, run?.goal.orEmpty(), h.tex, h.recap))
         scheduleHide(config.hudTimeoutSec * 1_000L)
         emitStatus()
     }
@@ -1388,8 +1449,8 @@ class FocusEngine(private val app: Context) {
 
     private fun showIdle() {
         if (panel != null) return renderPanel()
-        if (testMode) return showHud(HudScreen.Idle(compact = false, paused = false))
-        showHud(HudScreen.Idle(compact = prefs.getInt("blocksStarted", 0) > 3, paused = micPaused, goal = run?.goal.orEmpty()))
+        if (testMode) return showHud(HudScreen.Idle())
+        showHud(HudScreen.Idle(dot = attentionDot))
     }
 
     /** Glasses with a screen for our HUD: the DAT display (fallback) or display-capable glasses running the web app. */
@@ -1585,9 +1646,12 @@ class FocusEngine(private val app: Context) {
         private const val WEB_GESTURE_ECHO_MS = 3_500L
         private const val RELEASE_DELAY_MS = 2_000L
         private const val HISTORY = 5
+        private val SITUATIONS = setOf("lecture", "homework", "desk", "reading")
+        val SIMS = setOf("start", "lecture_hint", "homework_quest", "bookmark", "milestone", "stuck_l1", "stuck_l2", "lapse_l2", "key_l2", "doze_l2", "stop")
         private const val RECENT = 6
         private const val PANEL_TIMEOUT_MS = 20_000L
         private const val DUMP_TIMEOUT_MS = 10_000L
+        private const val NOTE_TIMEOUT_MS = Dictation.NOTE_MAX_MS + 1_000L
         private val RECONNECT_DELAYS = longArrayOf(2_000, 5_000, 10_000)
     }
 }

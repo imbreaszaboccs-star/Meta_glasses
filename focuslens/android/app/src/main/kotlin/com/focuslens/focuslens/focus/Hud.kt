@@ -17,11 +17,11 @@ import com.meta.wearable.dat.display.views.TextStyle
  * Rule: at most three lines of content, never a paragraph.
  */
 sealed class HudScreen {
-    /** Minimal idle marker. [compact] = just a dot once the user has learned the gesture. */
-    data class Idle(val compact: Boolean, val paused: Boolean, val goal: String = "") : HudScreen()
+    /** Fully transparent; [dot] = the quiet L1 attention dot (top right). */
+    data class Idle(val dot: Boolean = false) : HudScreen()
     data class Thinking(val text: String) : HudScreen()
     /** [index] is 1-based position in the local history, [total] its size. */
-    data class Hint(val text: String, val index: Int, val total: Int, val formula: Bitmap? = null, val crop: Bitmap? = null, val goal: String = "", val tex: String = "") : HudScreen()
+    data class Hint(val text: String, val index: Int, val total: Int, val formula: Bitmap? = null, val crop: Bitmap? = null, val goal: String = "", val tex: String = "", val recap: String = "") : HudScreen()
     /** A micro-step quest: [index] is 0-based; [feedback] = what the last check said (not done yet). */
     data class Quest(val step: String, val index: Int, val total: Int, val goal: String, val feedback: String?, val crop: Bitmap?, val formula: Bitmap?, val tex: String = "") : HudScreen()
     /** Cards panel (swipe up): [selected] indexes [rows]; at most 4 rows are drawn around it. */
@@ -29,7 +29,7 @@ sealed class HudScreen {
     data class BlockDetail(val title: String, val step: String, val correction: String, val formula: Bitmap?, val tex: String = "") : HudScreen()
     data class Message(val title: String, val body: String?) : HudScreen()
     /** Proactive offer; pinch = yes, LEFT/BACK = no, hides itself after a few seconds. */
-    data class Nudge(val title: String) : HudScreen()
+    data class Nudge(val title: String, val kind: NudgeKind) : HudScreen()
 }
 
 data class BlockRow(val title: String, val time: String)
@@ -47,17 +47,9 @@ object Hud {
     }
 
     private fun idle(screen: HudScreen.Idle): ContentScope.() -> Unit = {
-        flexBox(direction = Direction.COLUMN, gap = 8, padding = 24) {
+        if (screen.dot) flexBox(direction = Direction.ROW, padding = 24) {
             flexBox(direction = Direction.COLUMN, flexGrow = 1f) {}
-            if (screen.goal.isNotBlank()) text(Strings.anchor(screen.goal), style = TextStyle.META, color = TextColor.SECONDARY)
-            when {
-                screen.paused -> {
-                    text(Strings.paused, style = TextStyle.BODY)
-                    text(Strings.pausedHint, style = TextStyle.META, color = TextColor.SECONDARY)
-                }
-                screen.compact -> text("●", style = TextStyle.META, color = TextColor.SECONDARY)
-                else -> text("● ${Strings.appName} · ${Strings.idleHint}", style = TextStyle.META, color = TextColor.SECONDARY)
-            }
+            text("●", style = TextStyle.META, color = TextColor.SECONDARY)
         }
     }
 
@@ -65,6 +57,7 @@ object Hud {
         val words = screen.text.trim().split(Regex("\\s+")).size
         flexBox(direction = Direction.COLUMN, gap = 16, padding = 28, background = FlexBoxBackground.CARD) {
             if (screen.goal.isNotBlank()) text(Strings.anchor(screen.goal), style = TextStyle.META, color = TextColor.SECONDARY)
+            if (screen.recap.isNotBlank()) text(screen.recap, style = TextStyle.BODY, color = TextColor.SECONDARY)
             text(screen.text, style = if (words <= 12 && screen.formula == null && screen.crop == null) TextStyle.HEADING else TextStyle.BODY)
             pictures(screen.crop, screen.formula)
             flexBox(direction = Direction.ROW, gap = 12, crossAlignment = Alignment.CENTER) {
