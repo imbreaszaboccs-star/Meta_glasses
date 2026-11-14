@@ -10,6 +10,8 @@ People with ADHD, dyslexia, or overwhelmed students struggle with three main obs
 
 Current tools and AI assistants require a person to pick up their phone. However, for an ADHD brain, unlocking the phone screen is a trap—they are immediately consumed by notifications, context-switching occurs, and returning to the original work takes an average of over 20 minutes. Even worse, apps that ask the user to choose modes (*Lecture / Homework / Desk*) or type out goals before starting create immediate decision friction.
 
+
+
 ## Solution: Zero-Friction Executive Copilot from a First-Person View
 FocusLens moves assistance from the distracting phone into the natural field of view of smart glasses (**Meta Ray-Ban Display + Meta Neural Band**, with audio fallback for display-less glasses). Instead of ten complex features or configuration forms, it builds on **one single button (`Start Session`)** and **one frictionless finger pinch** that keeps the user in the present moment working on paper, at the board, or at a desk.
 
