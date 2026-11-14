@@ -38,16 +38,23 @@ class AttentionMachine(private val now: () -> Long) {
         for (i in p.indices) if (p[i] > p[d]) d = i
         val dom = Act.entries[d]
         val micro = !Thr.isStill(f)
-        val active = dom == Act.WALKING || if (mode == "lecture") {
-            !((dom == Act.STILL || dom == Act.LOOKING_AROUND) && f[iSpeech] > SPEECH_MIN)
-        } else {
-            dom == Act.SWITCHING || (dom == Act.NOTES && micro) || (mode == "desk" && dom == Act.BOARD && micro)
+        val speaking = f[iSpeech] > SPEECH_MIN
+        val active = dom == Act.WALKING || when (mode) {
+            "lecture" -> if (speaking) dom != Act.STILL && dom != Act.LOOKING_AROUND else dom == Act.SWITCHING || (dom == Act.NOTES && micro) || (dom == Act.BOARD && micro)
+            "homework" -> dom == Act.SWITCHING || (dom == Act.NOTES && micro)
+            "desk" -> dom == Act.SWITCHING || (dom == Act.NOTES && micro) || (dom == Act.BOARD && micro)
+            else -> dom == Act.SWITCHING || (dom == Act.NOTES && micro) || (dom == Act.BOARD && (micro || speaking))
         }
         if (active) lastActive = t
         ws.addLast(W(t, dom, p[d]))
         while (ws.first().t < t - KEEP_MS) ws.removeFirst()
 
-        if (dom == Act.NOD) { if (lastNodWin == NONE || t - lastNodWin > NOD_GAP_MS) nods += t; lastNodWin = t }
+        if (dom == Act.NOD) {
+            if (lastNodWin == NONE || t - lastNodWin > NOD_GAP_MS) {
+                nods += t
+                lastNodWin = t
+            }
+        }
         nods.removeAll { it < t - DOZE_SPAN_MS }
         if (f[iRel] >= DROP_REL) { dropped = false; stillSince = NONE }
         else if (!dropped) dropped = true // the drop itself; stillness has to follow

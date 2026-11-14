@@ -184,4 +184,38 @@ class AttentionSimTest {
         t = 4_000_000; assertEquals(2, p.tick(AttState.ENGAGED, true, key).level)
         t = 4_700_000; assertEquals(0, p.tick(AttState.AWAY, true, key).level)            // whole AWAY quiet
     }
+
+    @Test fun autoModeLectureListeningOnBoardNeverTriggersStuck() {
+        val s = Sim(mode = "auto")
+        s.speech = 0.6f // lecturer speaking
+        s.copy(120)     // calibrate board + notes
+        s.seg(Kind.BOARD, 15.0 * 60) // 15 min watching the board in a lecture
+        assertEquals(AttState.ENGAGED, s.machine.state)
+        assertEquals(-1L, s.l1At)
+        assertTrue(s.l2.isEmpty())
+    }
+
+    @Test fun autoModeSilentMotionlessTriggersStuck() {
+        val s = Sim(mode = "auto")
+        s.speech = 0.0f // silent room (homework/desk)
+        s.copy(120)
+        s.seg(Kind.WRITE, 60.0)
+        s.seg(Kind.STILL, 10.0 * 60) // frozen staring at notes
+        assertEquals(AttState.STUCK, s.machine.state)
+        assertTrue(s.l1At > 0)
+    }
+
+    @Test fun repeatedNodsEveryFewSecondsTriggerDozing() {
+        var t = 0L
+        val m = AttentionMachine { t }
+        val f = FloatArray(Features.NAMES.size)
+        val nodProbs = FloatArray(Act.entries.size).also { it[Act.NOD.ordinal] = 0.9f }
+        // Nod windows arriving every 3 seconds: 1st at 1s, 2nd at 4s (<5s gap, ignored), 3rd at 7s (>=5s from 1s, counted!)
+        t = 1_000L; m.onWindow(nodProbs, f, "auto", 300f)
+        assertEquals(AttState.ENGAGED, m.state)
+        t = 4_000L; m.onWindow(nodProbs, f, "auto", 300f)
+        assertEquals(AttState.ENGAGED, m.state)
+        t = 7_000L; m.onWindow(nodProbs, f, "auto", 300f)
+        assertEquals(AttState.DOZING, m.state)
+    }
 }

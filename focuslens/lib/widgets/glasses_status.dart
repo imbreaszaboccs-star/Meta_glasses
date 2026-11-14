@@ -54,7 +54,7 @@ Future<void> startFocusFlow(BuildContext context, {String goal = ''}) async {
   if (s.registered && s.glassesConnected && s.cameraPermission != 'granted') {
     await app.focus.requestGlassesCamera();
   }
-  await app.focus.startFocus({...app.settings.toConfig(), 'goal': goal.trim()});
+  await app.focus.startFocus({...app.settings.toConfig(), 'mode': 'auto', 'goal': goal.trim()});
   await app.focus.refresh();
   if (!context.mounted) return;
   final after = app.focus.status.value;

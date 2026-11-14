@@ -178,15 +178,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
               const SectionLabel('Steps'),
               ListTile(
-                title: const Text('Default mode'),
-                trailing: Text(modeNames[settings.mode]!, style: text.bodyMedium),
-                onTap: () async {
-                  final v = await pickOne(context, title: 'Default mode', current: settings.mode,
-                      options: [for (final e in modeNames.entries) (e.key, e.value)]);
-                  if (v != null) settings.setMode(v);
-                },
-              ),
-              ListTile(
                 title: const Text('Language of the steps'),
                 subtitle: const Text('Match the language of your lectures and notes.'),
                 trailing: Text(_languageName(settings.language), style: text.bodyMedium),

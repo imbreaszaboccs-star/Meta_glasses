@@ -279,12 +279,6 @@ class _Defaults extends StatelessWidget {
         title: 'Last thing',
         footer: _Footer(primary: 'Done', onPrimary: () => settings.setOnboarded(true)),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('What do you usually need help with?', style: text.titleMedium),
-          const SizedBox(height: Gap.s),
-          ModePicker(value: settings.mode, onChanged: settings.setMode),
-          const SizedBox(height: Gap.s),
-          Text(modeHelp[settings.mode]!, style: text.bodyMedium!.copyWith(color: Tokens.of(context).graphite)),
-          const SizedBox(height: Gap.xl),
           Text('Language of the steps', style: text.titleMedium),
           Text('Pick the language of your lectures and notes.', style: text.bodySmall),
           RadioGroup<String>(

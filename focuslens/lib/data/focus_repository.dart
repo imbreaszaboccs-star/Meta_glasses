@@ -107,6 +107,7 @@ class FocusRepository {
   Future<void> pauseMic() => _call('pauseMic');
   Future<void> resumeMic() => _call('resumeMic');
   Future<void> help() => _call('help');
+  Future<void> bookmark() => _call('bookmark');
   Future<void> next() => _call('next');
   Future<void> prev() => _call('prev');
   Future<void> dismiss() => _call('dismiss');

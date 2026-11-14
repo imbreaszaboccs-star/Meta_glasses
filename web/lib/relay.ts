@@ -118,7 +118,7 @@ const isNote = (v: unknown) => (typeof v === 'string' && v.length <= 2000 && cle
 
 export const COMMANDS: Record<string, Validator> = {
   start_focus: only({ mode: isMode, goal: isGoal }),
-  stop_focus: only({}), help: only({}), pause_mic: only({}), resume_mic: only({}),
+  stop_focus: only({}), help: only({}), bookmark: only({}), pause_mic: only({}), resume_mic: only({}),
   review_load: only({}), refresh: only({}), next: only({}), reconnect: only({}), inbox_sync: only({}),
   set_config: only({
     mode: isMode, nudges: isBool, wakeWord: isBool, readAloud: isBool, dozeSound: isBool, collect: isBool,

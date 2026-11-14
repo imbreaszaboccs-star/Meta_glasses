@@ -65,7 +65,7 @@ class RemoteLinkTest {
 
     @Test
     fun validateContractV2Commands() {
-        for (t in listOf("next", "reconnect", "inbox_sync")) assertNull(t, v(t))
+        for (t in listOf("next", "bookmark", "reconnect", "inbox_sync")) assertNull(t, v(t))
         assertNull(v("card_reviewed", """{"id":"a","reviewed":true}"""))
         assertEquals("bad reviewed", v("card_reviewed", """{"id":"a","reviewed":1}"""))
         assertEquals("bad id", v("card_reviewed", """{"reviewed":true}"""))

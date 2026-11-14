@@ -92,6 +92,8 @@ class FocusEngine(private val app: Context) {
         var hintCount = 0
         var goal = ""          // the focus anchor ("" = none)
         var goalAsked = false  // the "what are we working on?" prompt is shown at most once
+        var situation = ""     // latest situation detected by the AI (lecture | homework | desk | reading | other)
+        var lastPulseMin = 0   // last 30-min time-blindness milestone shown on the HUD
     }
     private var run: Run? = null
     private var mic: MicRing? = null
@@ -359,7 +361,8 @@ class FocusEngine(private val app: Context) {
         startMic()
         attachGlasses()
         speaker.warmUp()
-        tickJob = scope.launch { while (isActive) { delay(1_000); nudgeTick(); displayTick(); emitStatus() } }
+        if (phase == Phase.IDLE) showIdle()
+        tickJob = scope.launch { while (isActive) { delay(1_000); nudgeTick(); timePulseTick(); displayTick(); emitStatus() } }
         log("focus", "started ${r.mode}")
         emitStatus()
         return null
@@ -519,8 +522,8 @@ class FocusEngine(private val app: Context) {
                 scope = scope,
                 log = ::log,
                 onState = { st -> onGlassesState(gs, st) },
-                onGesture = { g -> onGesture(g) },
-                onDisplayReady = { if (glasses === gs && !askGoal()) rerender() },
+                onGesture = { g -> onGesture(g, fromWeb = false) },
+                onDisplayReady = { if (glasses === gs) rerender() },
                 onHead = { h -> if (glasses === gs) nudges.onHead(h) },
                 onUpdateRequired = { updateRequired = true; event("updateRequired"); emitStatus() },
                 onAudio = { b, n -> mic?.feed(b, n) },
@@ -592,7 +595,19 @@ class FocusEngine(private val app: Context) {
 
     // ------------------------------------------------------------------ gestures
 
-    fun onGesture(g: Gesture) {
+    private var lastNativeGesture: Gesture? = null
+    private var lastNativeGestureAt = 0L
+
+    fun onGesture(g: Gesture, fromWeb: Boolean = false) {
+        val now = SystemClock.elapsedRealtime()
+        if (fromWeb) {
+            if (g == lastNativeGesture && now - lastNativeGestureAt < WEB_GESTURE_ECHO_MS) {
+                return log("input", "web gesture $g ignored (already handled via DAT)")
+            }
+        } else {
+            lastNativeGesture = g
+            lastNativeGestureAt = now
+        }
         event("gesture", mapOf("name" to g.name))
         if (testMode) {
             if (g == Gesture.SELECT) showMessage(Strings.itWorks, null, autoHideMs = 4_000)
@@ -617,7 +632,7 @@ class FocusEngine(private val app: Context) {
             Gesture.RIGHT -> next()
             Gesture.LEFT -> prev()
             Gesture.BACK -> if (phase == Phase.THINKING) cancelHint() else dismiss()
-            Gesture.CAPTURE -> log("input", "capture button ignored (task.md T5.1: may clash with Meta AI capture)")
+            Gesture.CAPTURE -> bookmark("capture")
             Gesture.UP -> if (phase == Phase.IDLE || phase == Phase.SHOWN) openPanel()
             Gesture.DOWN -> if (phase != Phase.THINKING) startDump("task")
         }
@@ -639,7 +654,7 @@ class FocusEngine(private val app: Context) {
                     val title = c.optJSONObject("card")?.optString("title").orEmpty().ifBlank { step }
                     val png = if (c.has("formulaImage")) cards.readFile(id, c.getString("formulaImage")) else null
                     Block(
-                        BlockRow(title.take(24), at.substring(11, 16)), title, step,
+                        BlockRow(title.take(24), if (at.length >= 16) at.substring(11, 16) else ""), title, step,
                         c.optJSONObject("card")?.optString("correction").orEmpty().take(120),
                         png?.let { BitmapFactory.decodeByteArray(it, 0, it.size) },
                         c.optString("formula"),
@@ -709,6 +724,69 @@ class FocusEngine(private val app: Context) {
         quest = null
         log("hint", "help from $source")
         runHint(chainCardId = null)
+    }
+
+    /** Quick-save the current slide/page + recent audio into evening review without waiting for AI on the HUD. */
+    fun bookmark(source: String) {
+        val r = run ?: return log("info", "bookmark ignored: no focus block running")
+        val now = SystemClock.elapsedRealtime()
+        if (now - lastHelpAt < DEBOUNCE_MS) return log("info", "bookmark ignored (debounce)")
+        lastHelpAt = now
+        policy.onUser(); userAt = clock(); recorder?.event("bookmark")
+        log("hint", "bookmark from $source")
+        val g = glasses
+        val cfg = config
+        val sessionId = r.sessionId
+        val goal = r.goal
+        val known = mistakes.list()
+        val recentJson = JSONArray(recent.toList())
+        if (phase == Phase.IDLE || phase == Phase.MESSAGE) {
+            showMessage(Strings.bookmarking, null, autoHideMs = 2_000)
+        }
+        scope.launch {
+            try {
+                val photoD = async { g?.capturePhoto() }
+                val pcm = mic?.takeIf { it.isListening && it.bufferedSeconds >= 1 }?.snapshot()
+                val audioD = async(Dispatchers.Default) {
+                    pcm?.let { AudioCodec.encode(it.takeLast(60 * MicRing.BYTES_PER_SECOND), MicRing.SAMPLE_RATE, app.cacheDir) }
+                }
+                val photo = photoD.await()
+                val audio = audioD.await()
+                if (photo == null && audio == null) {
+                    if (phase == Phase.IDLE || phase == Phase.MESSAGE) {
+                        showMessage(Strings.nothingToSend, null, autoHideMs = 3_000)
+                    }
+                    return@launch
+                }
+                val id = withContext(Dispatchers.IO) {
+                    val newId = cards.newId()
+                    val c = CardStore.newCard(newId, sessionId, cfg.mode, cfg.language)
+                    val req = JSONObject().put("ts", CardStore.now()).put("previous", JSONArray())
+                        .put("recent", recentJson).put("goal", goal).put("mistakes", JSONArray(known))
+                    photo?.let { cards.saveFile(newId, "photo.jpg", it); req.put("photo", "photo.jpg") }
+                    audio?.let {
+                        cards.saveFile(newId, "request.${it.ext}", it.bytes)
+                        req.put("audio", "request.${it.ext}").put("audioMime", it.mime)
+                        if (cfg.keepAudio != "none") {
+                            cards.saveFile(newId, "audio.${it.ext}", it.bytes)
+                            c.put("audio", "audio.${it.ext}")
+                        }
+                    }
+                    cards.write(newId, c.put("request", req))
+                    newId
+                }
+                run?.let { it.hintCount++; writeSession(it, ended = false) }
+                event("card", mapOf("id" to id, "status" to CardStore.STATUS_PENDING))
+                RetryWorker.enqueue(app, now = true)
+                if (phase == Phase.IDLE || phase == Phase.MESSAGE) {
+                    showMessage(Strings.bookmarked, null, autoHideMs = 2_000)
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                log("error", "bookmark: $e")
+            }
+        }
     }
 
     fun next() {
@@ -855,7 +933,9 @@ class FocusEngine(private val app: Context) {
         val cropPng = cropOf(photo, res.focusBox)
         val crop = cropPng?.first?.let(Crop::forHud)
         if (res.mistake.isNotBlank()) mistakes.add(res.mistake)
-        val isQuest = res.steps.size >= 2
+        val situation = res.card.optString("situation").ifBlank { config.mode }
+        run?.situation = situation
+        val isQuest = res.steps.size >= 2 && situation != "lecture"
         withContext(Dispatchers.IO) {
             cards.update(id) { c ->
                 cards.putFormula(id, c, res.formula, res.formulaPng.takeIf { formula != null })
@@ -1177,6 +1257,18 @@ class FocusEngine(private val app: Context) {
         if (out.level == 2) out.kind?.let(::showNudge)
     }
 
+    /** Gentle 30-minute time-blindness horizon pulse while the HUD is idle and clear. */
+    private fun timePulseTick() {
+        val r = run ?: return
+        if (phase != Phase.IDLE || panel != null || panelLoading || testMode || !showsHud(glasses)) return
+        val mins = ((SystemClock.elapsedRealtime() - r.startedRealtime) / 60_000L).toInt()
+        if (mins >= 30 && mins % 30 == 0 && mins != r.lastPulseMin) {
+            r.lastPulseMin = mins
+            log("info", "time pulse: ${mins}m")
+            showMessage(Strings.timePulse(mins), null, autoHideMs = 3_500L)
+        }
+    }
+
     private fun setAttention(on: Boolean) {
         if (on == attentionDot) return
         attentionDot = on
@@ -1450,6 +1542,7 @@ class FocusEngine(private val app: Context) {
                 "running" to (r != null),
                 "sessionId" to r?.sessionId,
                 "mode" to (r?.mode ?: config.mode),
+                "situation" to (r?.situation ?: ""),
                 "startedAt" to r?.startedAt,
                 "hintCount" to (r?.hintCount ?: 0),
                 "goal" to (r?.goal ?: ""),
@@ -1488,6 +1581,7 @@ class FocusEngine(private val app: Context) {
     companion object {
         private const val TAG = "FocusLens"
         private const val DEBOUNCE_MS = 1_500L
+        private const val WEB_GESTURE_ECHO_MS = 3_500L
         private const val RELEASE_DELAY_MS = 2_000L
         private const val HISTORY = 5
         private const val RECENT = 6

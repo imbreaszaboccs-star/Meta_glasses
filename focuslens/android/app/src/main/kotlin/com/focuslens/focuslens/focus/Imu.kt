@@ -20,8 +20,9 @@ class Calib(val board: Float, val notes: Float)
 // ponytail: calibration knobs
 const val MIN_GAP_DEG = 8f
 const val SINGLE_POSTURE_GAP_DEG = 25f
+const val SINGLE_POSTURE_SPLIT_DEG = -18f
 
-/** 1-D k-means, k = 2 (board = the higher pitch). Two centers closer than [MIN_GAP_DEG] = one posture. */
+/** 1-D k-means, k = 2 (board = the higher pitch). Two centers closer than [MIN_GAP_DEG] = one posture (board if looking up, notes if down). */
 fun calibrate(pitches: FloatArray): Calib {
     if (pitches.isEmpty()) return Calib(0f, -60f) // same as the uncalibrated mapping
     val s = pitches.sortedArray()
@@ -33,7 +34,10 @@ fun calibrate(pitches: FloatArray): Calib {
         if (nl > 0) lo = (sl / nl).toFloat()
         if (nh > 0) hi = (sh / nh).toFloat()
     }
-    if (hi - lo < MIN_GAP_DEG) { val m = s.average().toFloat(); return Calib(m + SINGLE_POSTURE_GAP_DEG, m) }
+    if (hi - lo < MIN_GAP_DEG) {
+        val m = s.average().toFloat()
+        return if (m > SINGLE_POSTURE_SPLIT_DEG) Calib(m, m - SINGLE_POSTURE_GAP_DEG) else Calib(m + SINGLE_POSTURE_GAP_DEG, m)
+    }
     return Calib(hi, lo)
 }
 

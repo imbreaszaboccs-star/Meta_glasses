@@ -49,6 +49,13 @@ class ActivityModelTest {
         assertEquals(-29.5f, c.notes, 1f)
     }
 
+    @Test fun calibrateSinglePostureLookingAtBoardSetsBoardAnchor() {
+        val c = calibrate(FloatArray(100) { -5f + (it % 3) * 0.5f })
+        assertEquals(25f, c.board - c.notes, 1e-3f)
+        assertEquals(-4.5f, c.board, 1f)
+        assertEquals(1f, Features.rel(-4.5f, c), 1e-2f)
+    }
+
     @Test fun uncalibratedMapping() {
         assertEquals(0f, Features.rel(-60f, null), 1e-6f)
         assertEquals(1f, Features.rel(0f, null), 1e-6f)

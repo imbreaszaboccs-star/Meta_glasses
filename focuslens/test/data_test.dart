@@ -74,14 +74,16 @@ void main() {
 
   test('FocusStatus reads the engine snapshot with safe defaults', () {
     expect(FocusStatus.empty.running, isFalse);
-    expect(FocusStatus.empty.mode, 'lecture');
+    expect(FocusStatus.empty.mode, 'auto');
+    expect(FocusStatus.empty.situation, isEmpty);
+    expect(FocusStatus.empty.attentionState, isNull);
     expect(FocusStatus.empty.registration, 'UNAVAILABLE');
 
     const s = FocusStatus({
       'permissions': {'mic': true, 'bluetooth': true, 'notifications': true, 'battery': false},
       'registration': 'REGISTERED',
       'glasses': {'connected': true, 'name': 'Meta Ray-Ban Display', 'battery': 81, 'phase': 'READY', 'hasDisplay': true},
-      'focus': {'running': true, 'mode': 'desk', 'startedAt': 1763112725000, 'hintCount': 3},
+      'focus': {'running': true, 'mode': 'auto', 'situation': 'lecture', 'attention': 'ENGAGED', 'startedAt': 1763112725000, 'hintCount': 3},
       'mic': {'listening': true, 'bufferedSec': 42},
       'hint': {'phase': 'SHOWN', 'text': 'Clear the left side of the desk.', 'lastText': 'Clear the left side of the desk.'},
       'config': {'bufferSec': 120},
@@ -92,7 +94,9 @@ void main() {
     expect(s.glassesReady, isTrue);
     expect(s.glassesBattery, 81);
     expect(s.running, isTrue);
-    expect(s.mode, 'desk');
+    expect(s.mode, 'auto');
+    expect(s.situation, 'lecture');
+    expect(s.attentionState, 'ENGAGED');
     expect(s.hintCount, 3);
     expect(s.bufferedSec, 42);
     expect(s.shownText, 'Clear the left side of the desk.');

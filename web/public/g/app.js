@@ -251,10 +251,10 @@ $('goalInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') e.tar
 
 // ---------- screens: each returns {top?, rows?, body?, after?, footer, max?} ----------
 function focusPage() {
-  const f = focus(), c = config(), top = [], rows = [];
+  const f = focus(), top = [], rows = [];
   if (running()) {
     const head = el('div', 'timer', fmtTime(elapsed())); head.id = 'timer'; top.push(head);
-    const bits = [cap(str(f.mode, 'auto'))]; if (f.goal) bits.push(str(f.goal));
+    const bits = [f.situation ? cap(str(f.situation)) : 'Session active']; if (f.goal) bits.push(str(f.goal));
     if (f.micPaused) bits.push('Mic paused');
     top.push(el('div', 'line', bits.join(' · ')));
     if (f.lastHint) top.push(el('div', 'hinttxt clamp2', str(f.lastHint)));
@@ -265,20 +265,17 @@ function focusPage() {
       top.push(d);
     } else top.push(el('div', 'gap'));
     rows.push({ l: 'Help now', act: () => send('help', {}, 'Help requested') });
-    rows.push({ l: 'Next step', act: () => send('next', {}, 'Next step') });
+    rows.push({ l: 'Bookmark for later', act: () => send('bookmark', {}, 'Saved for later') });
     rows.push(f.micPaused ? { l: 'Resume mic', act: () => send('resume_mic', {}, 'Mic on') } : { l: 'Pause mic', act: () => send('pause_mic', {}, 'Mic paused') });
-    rows.push({ l: armed === 'stop' ? 'Pinch again to stop' : 'Stop session', warn: armed === 'stop', act: () => { if (arm('stop')) send('stop_focus', {}, null, false); } });
+    rows.push({ l: armed === 'stop' ? 'Pinch again to stop' : 'End session', warn: armed === 'stop', act: () => { if (arm('stop')) send('stop_focus', {}, null, false); } });
     return { top, rows, max: 4, footer: hudMenu() ? 'Back to HUD · pinch select' : 'Pinch select · ← → pages' };
   }
-  top.push(el('div', 'title', 'Ready to focus'));
-  top.push(el('div', 'meta', 'Set a mode and goal, or just start.'));
+  top.push(el('div', 'title', 'Ready'));
+  top.push(el('div', 'meta', 'Pinch to start recording context.'));
   top.push(el('div', 'gap'));
-  rows.push({ pill: true, l: 'Start focus', act: () => {
-    const args = { mode: str(c.mode, 'auto') }; if (goal) args.goal = goal.slice(0, 200);
-    send('start_focus', args, null, false);
+  rows.push({ pill: true, l: 'Start session', act: () => {
+    send('start_focus', { mode: 'auto' }, null, false);
   } });
-  rows.push({ l: 'Mode', r: cap(str(c.mode, 'auto')), act: () => { const m = cycle(MODES, str(c.mode, 'auto')); setCfg({ mode: m }, 'Mode: ' + cap(m)); } });
-  rows.push({ l: 'Goal', r: goal ? trunc(goal, 24) : 'None', act: () => openComposer('goal') });
   const g = S && S.glasses, after = [el('div', 'gap')];
   after.push(el('div', 'meta', g && g.connected ? 'Glasses · ' + str(g.name, 'connected') + (typeof g.battery === 'number' ? ' · ' + g.battery + '%' : '') : 'Glasses not connected'));
   after.push(el('div', 'meta', openCount() + ' open in inbox · ' + todayCount() + ' cards today'));
@@ -387,7 +384,6 @@ function settingsPage() {
   const pick = (sec, k, name, vals, fmt) => ({ sec, l: name, r: fmt(c[k]), act: () => { const v = cycle(vals, c[k]); setCfg({ [k]: v }, name + ': ' + fmt(v)); } });
   const langName = (v) => (LANGS.find((x) => x[0] === v) || [v, str(v, 'English')])[1];
   const rows = [
-    pick('Session', 'mode', 'Mode', MODES, (v) => cap(str(v, 'auto'))),
     pick('Session', 'language', 'Language', LANGS.map((x) => x[0]), langName),
     pick('Session', 'bufferSec', 'Memory', [60, 120, 150], (v) => (v || 120) + ' s'),
     pick('Session', 'hudTimeoutSec', 'Hint hides after', [10, 20, 40, 0], (v) => (v === 0 ? 'Never' : (v || 20) + ' s')),
@@ -502,10 +498,11 @@ function buildHud() {
   box.textContent = ''; box.className = (idle ? 'idle ' : '') + (h.s === 'nudge' ? 'nudge' : '');
   $('hudHint').hidden = $('hudHint').hidden || !idle;
   if (idle) {
-    const t = el('div'); t.id = 'hudTimer';
-    if (attention()) t.appendChild(el('i'));
-    t.appendChild(el('span', '', fmtTime(elapsed()))); t.lastChild.id = 'hudTime';
-    box.appendChild(t);
+    if (attention()) {
+      const t = el('div'); t.id = 'hudTimer';
+      t.appendChild(el('i'));
+      box.appendChild(t);
+    }
     return;
   }
   if (h.anchor) box.appendChild(el('div', 'anchor', str(h.anchor)));
@@ -612,6 +609,7 @@ function mockApi(path, opts) {
   else if (type === 'pause_mic') f.micPaused = true;
   else if (type === 'resume_mic') f.micPaused = false;
   else if (type === 'help') { f.hintCount++; f.lastHint = 'Look at the sign of each term before expanding.'; }
+  else if (type === 'bookmark') { f.hintCount++; }
   else if (type === 'next' && f.quest) f.quest.index = Math.min(f.quest.steps.length - 1, f.quest.index + 1);
   else if (type === 'set_config') { Object.assign(mock.config, args); if ('collect' in args) mock.imu.collect = args.collect; }
   else if (type === 'add_note') mock.inbox.unshift({ id: 'n' + id, text: args.text, done: false, createdAt: new Date().toISOString(), synced: false });

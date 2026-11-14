@@ -138,10 +138,11 @@ class FlutterBridge(
                 "pauseMic" -> { engine.pauseMic(); result.success(null) }
                 "resumeMic" -> { engine.resumeMic(); result.success(null) }
                 "help" -> { engine.help("app"); result.success(null) }
+                "bookmark" -> { engine.bookmark("app"); result.success(null) }
                 "next" -> { engine.next(); result.success(null) }
                 "prev" -> { engine.prev(); result.success(null) }
                 "dismiss" -> { engine.dismiss(); result.success(null) }
-                "setMode" -> { engine.setMode(arg("mode") ?: "lecture"); result.success(null) }
+                "setMode" -> { engine.setMode(arg("mode") ?: "auto"); result.success(null) }
                 "updateConfig" -> { engine.updateConfig(call.arguments as? Map<*, *>); result.success(null) }
 
                 // -- cards --

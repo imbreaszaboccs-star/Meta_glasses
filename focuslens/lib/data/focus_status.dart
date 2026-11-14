@@ -48,6 +48,8 @@ class FocusStatus {
   Map<String, dynamic> get _f => _sub('focus');
   bool get running => _f['running'] == true;
   String get mode => _f['mode'] as String? ?? 'auto';
+  String get situation => _f['situation'] as String? ?? '';
+  String? get attentionState => _f['attention'] as String?;
   DateTime? get startedAt {
     final ms = (_f['startedAt'] as num?)?.toInt();
     return ms == null ? null : DateTime.fromMillisecondsSinceEpoch(ms);

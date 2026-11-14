@@ -38,6 +38,8 @@ object Strings {
     const val notYet = "Not yet."
     const val sayIt = "🎙 Say it…"
     const val saving = "Saving…"
+    const val bookmarking = "Saving snapshot…"
+    const val bookmarked = "✓ Saved for later"
     const val nothingHeard = "Nothing heard"
     const val micOff = "The microphone is off."
     const val noteSaved = "📥 Saved for later"
@@ -46,10 +48,11 @@ object Strings {
     const val goalPromptBody = "Say it… · pinch skip"
     fun backTo(goal: String) = "Back to: ${goal.take(40)}"
     fun anchor(goal: String) = "⚓ " + (if (goal.length > 28) goal.take(27) + "…" else goal)
+    fun timePulse(mins: Int) = "$mins min in session"
 
     // Meta AI connector answers (spoken back by Meta AI)
-    const val focusStarted = "Focus started."
-    const val focusStopped = "Focus stopped."
+    const val focusStarted = "Session started."
+    const val focusStopped = "Session stopped."
     const val noHintYet = "No hint yet."
     const val helpFailed = "I couldn't get a hint."
     fun noteSaved(text: String) = "Saved: ${text.take(300)}"

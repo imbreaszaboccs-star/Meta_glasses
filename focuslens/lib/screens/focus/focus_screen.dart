@@ -52,18 +52,11 @@ class _Ready extends StatefulWidget {
 
 class _ReadyState extends State<_Ready> {
   bool _starting = false;
-  final _goal = TextEditingController();
-
-  @override
-  void dispose() {
-    _goal.dispose();
-    super.dispose();
-  }
 
   Future<void> _start() async {
     setState(() => _starting = true);
     try {
-      await startFocusFlow(context, goal: _goal.text);
+      await startFocusFlow(context);
     } finally {
       if (mounted) setState(() => _starting = false);
     }
@@ -81,35 +74,25 @@ class _ReadyState extends State<_Ready> {
     return ListenableBuilder(
       listenable: Listenable.merge([app.settings, app.cards]),
       builder: (context, _) {
-        final mode = app.settings.mode;
         final pending = app.cards.pendingCount;
+        final minutes = (app.settings.bufferSec / 60).ceil();
         return ListView(
           padding: const EdgeInsets.fromLTRB(Gap.l, Gap.l, Gap.l, Gap.xl),
           children: [
             Text('FocusLens', style: text.titleLarge),
             const SizedBox(height: Gap.xl),
-            Text('What are you doing?', style: text.headlineSmall),
-            const SizedBox(height: Gap.m),
-            ModePicker(value: mode, onChanged: app.settings.setMode),
+            Text('One button. Zero friction.', style: text.headlineSmall),
             const SizedBox(height: Gap.s),
-            Text(modeHelp[mode]!, style: text.bodyMedium!.copyWith(color: t.graphite)),
-            const SizedBox(height: Gap.l),
-            TextField(
-              controller: _goal,
-              maxLength: 200,
-              textInputAction: TextInputAction.done,
-              decoration: const InputDecoration(
-                labelText: 'Goal for this block (optional)',
-                hintText: 'e.g. finish problem set 3',
-                counterText: '',
-              ),
+            Text(
+              'Start at the beginning of a lecture or study block. FocusLens keeps the last $minutes min of audio in memory while keeping the glasses HUD completely transparent. Pinch thumb and index finger anytime you zone out or get stuck.',
+              style: text.bodyMedium!.copyWith(color: t.graphite),
             ),
-            const SizedBox(height: Gap.l),
+            const SizedBox(height: Gap.xl),
             FilledButton(
               onPressed: _starting ? null : _start,
               child: SizedBox(
                 width: double.infinity,
-                child: Center(child: Text(glassesOk ? 'Start focus' : 'Start without glasses')),
+                child: Center(child: Text(glassesOk ? 'Start session' : 'Start session without glasses')),
               ),
             ),
             if (!glassesOk)
@@ -192,7 +175,7 @@ class _RunningState extends State<_Running> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('End this focus block?'),
+        title: const Text('End this session?'),
         content: const Text('The sound in memory is dropped. Your cards stay.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Keep going')),
@@ -201,14 +184,6 @@ class _RunningState extends State<_Running> {
       ),
     );
     if (ok == true && mounted) await context.app.focus.stopFocus();
-  }
-
-  Future<void> _changeMode(String current) async {
-    final m = await pickOne(context,
-        title: 'Mode', current: current, options: [for (final e in modeNames.entries) (e.key, e.value)]);
-    if (m != null && mounted) {
-      await context.app.settings.setMode(m); // pushes the new mode to the engine
-    }
   }
 
   @override
@@ -220,23 +195,19 @@ class _RunningState extends State<_Running> {
     final since = s.startedAt == null ? Duration.zero : DateTime.now().difference(s.startedAt!);
     final minutes = (s.bufferSecConfig / 60).ceil();
     final step = s.lastText;
+    final sit = s.situation.isNotEmpty ? (modeNames[s.situation] ?? s.situation) : null;
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(Gap.l, Gap.l, Gap.l, Gap.xl),
       children: [
-        // header: mode + timer
+        // header: session status + timer
         Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
           Expanded(
-            child: InkWell(
-              onTap: () => _changeMode(s.mode),
-              borderRadius: BorderRadius.circular(6),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: Gap.s),
-                child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  Text(modeNames[s.mode] ?? s.mode, style: text.headlineSmall),
-                  const SizedBox(width: Gap.xs),
-                  Icon(Icons.expand_more_rounded, color: t.graphite, semanticLabel: 'Change mode'),
-                ]),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: Gap.s),
+              child: Text(
+                sit != null ? 'Session active · $sit' : 'Session active',
+                style: text.headlineSmall,
               ),
             ),
           ),
@@ -278,7 +249,7 @@ class _RunningState extends State<_Running> {
               s.phoneOnly
                   ? (s.glassesKnown ? 'Phone only · glasses connecting…' : 'Phone only · no glasses paired')
                   : s.glassesReady
-                      ? (s.hasDisplay ? 'Glasses ready · pinch for help' : 'Glasses ready · steps are spoken')
+                      ? (s.hasDisplay ? 'Glasses ready · HUD transparent · pinch for help' : 'Glasses ready · steps are spoken')
                       : 'Glasses: ${s.glassesPhase.toLowerCase()}',
               style: text.bodySmall,
             ),
@@ -309,8 +280,8 @@ class _RunningState extends State<_Running> {
           Text(
             s.hudMessage ??
                 (s.phoneOnly
-                    ? 'When you get stuck, tap Help. The step shows up here.'
-                    : 'When you get stuck, pinch your fingers. The step shows up on the glasses and here.'),
+                    ? 'When you zone out or get stuck, tap Help. The step shows up here.'
+                    : 'When you zone out or get stuck, pinch your fingers. The step shows up on the glasses and here.'),
             style: text.bodyLarge!.copyWith(color: t.graphite),
           ),
           const SizedBox(height: Gap.xl),
@@ -319,6 +290,11 @@ class _RunningState extends State<_Running> {
         FilledButton(
           onPressed: s.thinking ? null : app.focus.help,
           child: const SizedBox(width: double.infinity, child: Center(child: Text('Help'))),
+        ),
+        const SizedBox(height: Gap.s),
+        OutlinedButton(
+          onPressed: s.thinking ? null : app.focus.bookmark,
+          child: const SizedBox(width: double.infinity, child: Center(child: Text('Bookmark for later'))),
         ),
         if (step != null && !s.thinking) ...[
           const SizedBox(height: Gap.s),
@@ -331,14 +307,14 @@ class _RunningState extends State<_Running> {
         if (s.hintCount > 0)
           TextButton(
             onPressed: widget.onOpenCards,
-            child: Text(s.hintCount == 1 ? '1 step in this block →' : '${s.hintCount} steps in this block →'),
+            child: Text(s.hintCount == 1 ? '1 card in this session →' : '${s.hintCount} cards in this session →'),
           ),
         const SizedBox(height: Gap.l),
         Center(
           child: TextButton(
             style: TextButton.styleFrom(foregroundColor: t.ink),
             onPressed: _end,
-            child: const Text('End focus'),
+            child: const Text('End session'),
           ),
         ),
       ],

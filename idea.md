@@ -1,51 +1,73 @@
-1. "Holistic and Connected Concept: FocusLens
-Main Pitch: „Phones distract people with ADHD. Glasses give them back control. FocusLens transforms the visual and audio chaos in front of you into a single next step.“
+# 1. Holistic and Connected Concept: FocusLens
 
-Problem: The Mobile Phone Trap and Loss of Context
-People with ADHD, dyslexia, or overwhelmed students struggle with three main obstacles: zoning out, short-term working memory failure, and executive paralysis (the inability to start or continue a task when stuck). Current tools and AI assistants require a person to pick up their phone. However, for an ADHD brain, unlocking the phone screen is a trap—they are immediately consumed by notifications, context-switching occurs, and returning to the original work takes an average of over 20 minutes.
+**Main Pitch:** „Phones distract people with ADHD. Glasses give them back control. FocusLens transforms the visual and audio chaos in front of you into a single next step.“
 
-Solution: Executive Copilot from a First-Person View
-FocusLens moves assistance from the distracting phone into the natural field of view of smart glasses (e.g., Ray-Ban Meta with a display or purely audio response). Instead of ten complex features, it builds on a single immediate, frictionless interaction that keeps the user in the present moment working on paper, at the board, or at a desk.
+## Problem: The Mobile Phone Trap, Loss of Context, and Decision Paralysis
+People with ADHD, dyslexia, or overwhelmed students struggle with three main obstacles:
+1. **Zoning out (Attention Blink):** Momentary loss of focus during a lecture or conversation.
+2. **Short-term working memory failure:** Forgetting what was just explained on the board 30 seconds ago.
+3. **Executive paralysis (Task Paralysis):** The inability to start or continue a task when stuck, or even when forced to configure an app before starting.
 
-How it works in practice (Technical architecture and battery saving):
-The glasses do not record 90 minutes of video continuously, which would immediately drain the battery and overload memory (solving a crucial performance trade-off). Instead, an energy-efficient audio buffer runs in the background of the paired phone in the pocket, remembering only the last 60 seconds of audio in a rotating loop, while the glasses camera sleeps and waits for the trigger.
+Current tools and AI assistants require a person to pick up their phone. However, for an ADHD brain, unlocking the phone screen is a trap—they are immediately consumed by notifications, context-switching occurs, and returning to the original work takes an average of over 20 minutes. Even worse, apps that ask the user to choose modes (*Lecture / Homework / Desk*) or type out goals before starting create immediate decision friction.
 
-The moment a user experiences a "micro-lapse" of attention in a lecture or gets stuck on a math problem in their notebook, they simply tap the frame of the glasses:
+## Solution: Zero-Friction Executive Copilot from a First-Person View
+FocusLens moves assistance from the distracting phone into the natural field of view of smart glasses (**Meta Ray-Ban Display + Meta Neural Band**, with audio fallback for display-less glasses). Instead of ten complex features or configuration forms, it builds on **one single button (`Start Session`)** and **one frictionless finger pinch** that keeps the user in the present moment working on paper, at the board, or at a desk.
 
-1. Immediate context: The glasses take a photo of exactly what the user is looking at (the board, lecture notes, handwritten calculation, or desk clutter) and combine the image with the last 60 seconds of audio from the phone.
-2. Micro-scaffolding (Against executive paralysis): The AI model does not generate a long paragraph of text that would further overwhelm a person with ADHD. On the glasses display (or in the ear), it sends one single specific next step. For example: „You dropped a minus sign on the third line, fix it and multiply the equation by two,“ or „The professor just explained the relationship for entropy, write down this formula from the board.“
-3. Asynchronous safety net: At the same time, an enriched "context card" (photo + short audio excerpt + error correction) is saved to the phone application in the background. The user can return to it in the evening while studying without having to pick up the phone during the day.
+---
 
-Why this concept works (and wins competitions/hackathons):
+# 2. How It Works in Practice (Architecture, UX & Battery Saving)
 
-* True inclusion (Accessibility): Solves a real neurological problem by removing visual noise and friction when seeking help.
-* Perfect live demonstration: The product can be demonstrated in 30 seconds right at a desk. You just write an equation with an error or a chaotic to-do list on paper, put the glasses on the evaluator, let them tap the frame, and immediately show the hint in their field of view.
-* Defensible architecture: The combination of a lightweight audio buffer on the phone and a single snapshot from the glasses is technically elegant, battery-friendly, cheap on computational power (API calls happen only upon a tap), and preserves the privacy of those around.
+### 2.1 Zero-Friction „Start Session“ (Automatic Context Detection)
+There are no modes to configure and no text fields to fill out before starting. At the beginning of a lecture or study block, the user simply taps **Start Session** (or triggers it from the glasses/voice) and locks the phone in their pocket:
+- An energy-efficient **audio ring buffer** runs in the background of the paired phone, keeping only the last ~150 seconds of audio in RAM (overwriting continuously, never touching disk until triggered).
+- When the user triggers help, the multimodal AI model automatically detects the situation (`lecture`, `homework`, `desk`, `reading`) directly from the first-person photo and the room audio (whether a lecturer is speaking vs. quiet individual work).
 
-2. Market Research: Does something like this already exist?
-The combination of smart glasses and AI is growing at a tremendous pace, but the specific focus on neurodiversity (ADHD) using the fusion of a backward audio buffer and a first-person photograph is an open niche in the market (Blue Ocean).
+### 2.2 Transparent Eco HUD (Zero Visual Noise & Maximum Battery Life)
+Meta Ray-Ban Display uses an additive waveguide display where **pure black (`#000000`) means pixels are completely turned off (100% transparent)**.
+- **No ticking clocks or clutter:** Unlike standard apps that show a ticking timer (`12:04`, `12:05`…) in the corner—which drains the display battery and causes time-anxiety/distraction for ADHD—FocusLens keeps the HUD **100% transparent (black)** during normal work after a brief 3-second start confirmation.
+- **Gentle Time-Blindness Pulse:** To combat ADHD time blindness without a stressful ticking clock, the HUD gently flashes a 3-second milestone (`"30 min in session"`) once every 30 minutes and immediately returns to 100% transparent glass.
 
-| Product / Category | What they do today | Why they fail for people with ADHD (Your advantage) |
+### 2.3 Core Interaction: Pinch (Thumb + Index Finger) → Context-Aware Rescue
+The moment a user zones out in a lecture or gets stuck on a math problem in their notebook, they simply pinch their thumb and index finger (detected by the Meta Neural Band):
+1. **Immediate Snapshot:** The glasses capture a photo of what the user is looking at (the board, lecture slides, handwritten calculation, or desk) and combine it with the rolling audio buffer from the phone.
+2. **Context-Aware Output (Lecture vs. Task):**
+   - **In a Lecture (`situation = lecture`):** The user does *not* want a multi-step interactive quiz while the professor is still talking. FocusLens immediately displays what was just explained in the last minute and **one concrete thing to write down** (including rendered LaTeX formulas), then lets the user dismiss it with a single pinch back to a transparent HUD.
+   - **On Homework / Desk Work (`situation = homework | desk`):** FocusLens breaks executive paralysis with **micro-scaffolding (Quest)**—splitting the problem into 1–4 tiny 2-minute micro-steps. The user sees only one step at a time and can pinch when done to let the glasses camera verify their handwritten line before moving to the next step.
+3. **Instant Bookmark („Save for Later“):** If a lecturer is moving too fast through a complex slide, the user can bookmark the moment (camera snapshot + last 60 seconds of audio) into an asynchronous **Context Card** (`✓ Saved for later`) in 1 second without interrupting the lecture flow.
+4. **Asynchronous Safety Net (Evening Review):** Every snapshot + audio excerpt + error correction is saved as a Context Card on the phone for evening review and active-recall flashcards, so the user never has to pick up their phone during the day.
+
+---
+
+# 3. Proactive Zoning-Out & Paralysis Detection (IMU + Audio Fusion)
+
+Both the glasses and the wrist band have accelerometers and gyroscopes (30 Hz IMU stream). FocusLens uses **sensor fusion (Head IMU + Phone Microphone speech activity)** to detect when the user drifts off—without ever nagging them during productive work:
+
+### 3.1 Per-Session Automatic Posture Calibration
+During the first 2 minutes of a session, 1-D k-means clustering automatically calibrates the user's two natural head pitch angles for their specific seat/desk: **Board/Screen (`board`)** and **Notebook/Desk (`notes`)**—including a smart single-posture fallback if the user starts by only watching the board or only writing.
+
+### 3.2 Two-Layer Attention Engine
+1. **Layer 1 – Short-Term Activity Classifier (4 s windows / 2 s hop):** Classifies head motion and room audio into `BOARD`, `NOTES` (with writing micro-motion), `SWITCHING` (copying from board to notes), `STILL`, `LOOKING_AROUND`, `NOD` (head drop/micro-sleep), and `WALKING`.
+2. **Layer 2 – Transparent State Machine & Escalation Policy (`ENGAGED`, `DISTRACTED`, `STUCK`, `DOZING`, `AWAY`):**
+   - **Lecture Zoning-Out:** While the lecturer is speaking (`speech_ratio > 0.3`), looking at the board (`BOARD`), switching (`SWITCHING`), or taking notes (`NOTES`) counts as `ENGAGED`. If the user stares motionlessly (`STILL`) or looks around the room (`LOOKING_AROUND`) for too long while the lecturer speaks—or if a key lecture phrase is heard while the user isn't taking notes—FocusLens detects a lapse.
+   - **Homework Task Paralysis:** In a quiet room, if the user stares at their notebook for >4.5 minutes with zero writing micro-motions (`STILL`) and no pinches, FocusLens detects `STUCK`.
+   - **Micro-Sleep (`DOZING`):** Detects repeated head nods (`>= 2 nods` within 3 minutes or a sustained head drop) and immediately triggers a gentle wake-up nudge.
+   - **Two-Stage Non-Intrusive Nudge (L1 → L2):**
+     - **L1 (Silent Attention Dot):** First, only a tiny amber dot `●` appears in the corner of the otherwise transparent HUD—zero sound, zero text clutter.
+     - **L2 (Rescue Offer):** Only if the user remains stuck for another 2 minutes does a quiet prompt appear: *„Stuck? Pinch = smaller step“* (or *„Key point just now · Pinch = summary“*). Dismissing (`←`) automatically stretches the threshold by 20% and disables the nudge after 3 dismissals to prevent alert fatigue.
+
+### 3.3 Why General Wellness Features (Posture / Hydration Reminders) Are Excluded
+Features like „sit up straight“ (posture check) or „take a photo of your water glass“ (hydration tracker) are intentionally excluded:
+- **They cause ADHD Alert Fatigue & Break Hyperfocus:** Interrupting a person with ADHD who has finally achieved focus on their notebook just to tell them to sit straight or drink water destroys their workflow and triggers demand avoidance.
+- **Sensor Ambiguity:** Looking down at a notebook on a desk naturally pitches the head 30–45° downward. Treating downward head pitch as „bad posture“ directly conflicts with recognizing productive handwriting (`NOTES`).
+- **Laser-Focused Product Identity:** Every feature in FocusLens strictly serves **working memory, attention recovery, and executive function**.
+
+---
+
+# 4. Market Research: Blue Ocean Positioning
+
+| Product / Category | What they do today | Why they fail for people with ADHD (FocusLens Advantage) |
 | --- | --- | --- |
-| General AI glasses (Ray-Ban Meta, Even Realities G1, Solos AirGo) | Can take a photo of a scene and answer a question („What do I see?“), translate text in real time, or display notifications and a teleprompter. | They lack a backward time loop (buffer) and pedagogical-executive logic. When a person with ADHD "zones out", they don't know what to ask because they don't know what they missed in the last minute. Moreover, general AI spews out overly long answers. |
-| Memory AI wearables (Limitless Pendant, Friend, Plaud Note) | Record 100% of audio throughout the day and turn it into summaries of meetings or lectures. | They lack eyes (a camera) – they cannot see the formula on the board or the error in the notebook. Furthermore, they help ex-post (after the lecture), not in real time when a person gets stuck and needs an immediate "jump-start" step. |
-| Educational mobile apps (Photomath, Gauth, ChatGPT Voice/Vision) | You take a photo of a math problem with your phone and the app shows you the complete solution process up to the result. | They require picking up the phone (risk of immediate distraction on social media). Instead of gently guiding to the next step, they immediately give away the entire solution, which destroys the learning process. |
-| ADHD tools (Goblin.tools, Tiimo, Inflow) | Break down complex tasks into small subtasks (micro-scaffolding), plan time. | They are completely dependent on manual input into a phone or computer. At a moment of overwhelm, a person with ADHD does not have the capacity to transcribe their problem into an app. |
-
-Conclusion of research: The individual building blocks exist (smart glasses, audio transcription, micro-scaffolding in apps), but no one has yet combined them into a touchless, context-aware copilot for instantly overcoming getting stuck without needing to pull out a mobile phone.
-
-3. Real Impact: How much would this help people with ADHD?
-For people with ADHD, this is not a "convenience feature", but a compensatory aid that targets the biological nature of their disorder directly. Real utility stands on four pillars:
-4. Elimination of the "Context-Switching Tax":
-5. Cognitive science research (e.g., Gloria Mark from UC Irvine) shows that after an interruption, it takes the average brain over 20 minutes to return to full focus. For people with ADHD, this number is even higher and often leads to completely abandoning the task. By keeping the user's eyes on their notebook and leaving the phone in their pocket, FocusLens saves students and workers dozens of minutes of net time with every single stall.
-6. External working memory (Solving "Attention Blink"):
-7. The ADHD brain has a demonstrably smaller working memory capacity. When solving a complex problem or listening to a lecture, a momentary impulse (a classmate coughing, one's own thought) is enough to break the thread. The person then sinks into frustration and anxiety because they don't understand what is happening on the board. A 60-second backward buffer connected to the image acts as an "Undo button" in real life. It reduces stress and allows the user to immediately jump back into the lecture.
-8. Overcoming Executive Paralysis (Task Paralysis):
-9. When a person with ADHD sees a complex problem (a long word problem, a messy desk, a blank sheet of paper), their brain evaluates the task as too demanding on dopamine and freezes. The ability of FocusLens to look at the problem through the user's eyes and tell them „Now do just this one small thing“ (so-called scaffolding) artificially replaces the missing executive functions of the prefrontal cortex.
-10. Reducing Shame and Social Barrier:
-11. Students with ADHD or dyslexia are often ashamed to raise their hand and ask the teacher: „Excuse me, I didn't catch the last minute, how did you get to this line?“ FocusLens gives them silent, discrete support right in their field of view, thereby increasing their self-confidence and independence.
-"
-
-
-- jak glasses tak wrist band mají akcelerometry a gyroskop 
-- detekce jestli třeba přestal psat 
+| **General AI glasses** (Ray-Ban Meta, Even Realities G1, Solos AirGo) | Take a photo and answer a question („What do I see?“), translate text, or show notifications. | Lack a rolling backward audio buffer, automatic context detection, and executive micro-scaffolding. When someone with ADHD zones out, they don't know what to ask because they missed the last minute. |
+| **Memory AI wearables** (Limitless Pendant, Friend, Plaud Note) | Record 100% of audio all day and generate post-meeting summaries. | Lack eyes (camera)—cannot see the formula on the board or the sign error in the notebook. Help only *ex-post* (after the lecture), not in real time when stuck. |
+| **Educational mobile apps** (Photomath, Gauth, ChatGPT Vision) | Photograph a math problem with a phone and display the full solution. | Require picking up the phone (immediate social media distraction trap) and dump the entire solution at once instead of guiding the next micro-step. |
+| **ADHD apps** (Goblin.tools, Tiimo, Inflow) | Break tasks into subtasks and plan schedules on a phone. | Rely 100% on manual typing into a phone screen during moments of executive paralysis. |

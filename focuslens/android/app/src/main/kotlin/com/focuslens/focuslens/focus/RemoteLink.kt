@@ -55,7 +55,7 @@ object RemoteProto {
             a.has("goal") && !a.isNull("goal") && a.opt("goal") !is String -> "bad goal"
             else -> null
         }
-        "stop_focus", "help", "pause_mic", "resume_mic", "review_load", "refresh", "last_hint", "next", "reconnect", "inbox_sync" -> null
+        "stop_focus", "help", "bookmark", "pause_mic", "resume_mic", "review_load", "refresh", "last_hint", "next", "reconnect", "inbox_sync" -> null
         "card_reviewed" -> when {
             str(a, "id", 100) == null -> "bad id"
             a.opt("reviewed") !is Boolean -> "bad reviewed"
@@ -326,6 +326,10 @@ class RemoteLink(private val app: Context, private val engine: FocusEngine) : En
                 if (!engine.isRunning) "no focus block running"
                 else { if (c.reply) rep.wait = engine.helpForResult("glasses menu") else engine.help("glasses menu"); null }
             }
+            "bookmark" -> main {
+                if (!engine.isRunning) "no focus block running"
+                else { engine.bookmark("glasses menu"); rep.text = Strings.bookmarked; null }
+            }
             "add_note" -> {
                 val t = a.getString("text").trim()
                 engine.inbox.add(t, "meta_ai")
@@ -345,7 +349,7 @@ class RemoteLink(private val app: Context, private val engine: FocusEngine) : En
             "inbox_done" -> { engine.inbox.setDone(a.getString("id"), a.getBoolean("done")); null }
             "inbox_delete" -> { engine.inbox.delete(a.getString("id")); null }
             "review_load" -> { startReview(); null }
-            "gesture" -> main { engine.onGesture(Gesture.valueOf(a.getString("g").uppercase())); null }
+            "gesture" -> main { engine.onGesture(Gesture.valueOf(a.getString("g").uppercase()), fromWeb = true); null }
             else -> null // refresh: the view publish after the ack is the answer
         }
     }
@@ -457,7 +461,7 @@ class RemoteLink(private val app: Context, private val engine: FocusEngine) : En
         val o = obj(
             "v" to 2,
             "focus" to obj(
-                "running" to focus["running"], "mode" to focus["mode"], "goal" to RemoteProto.clip(focus["goal"] as? String, 200),
+                "running" to focus["running"], "mode" to focus["mode"], "situation" to focus["situation"], "goal" to RemoteProto.clip(focus["goal"] as? String, 200),
                 "startedAt" to focus["startedAt"], "hintCount" to focus["hintCount"], "micPaused" to focus["micPaused"],
                 "phase" to hint["phase"], "lastHint" to (hint["lastText"] as? String)?.let { RemoteProto.clip(it, 300) },
                 "audioSource" to focus["audioSource"], "attention" to focus["attention"],
