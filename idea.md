@@ -13,7 +13,7 @@ Current tools and AI assistants require a personels to pick up their phone. Howe
 
 
 ## Solution: Zero-Friction Executive Copilot from a First-Person View
-FocusLens moves assistance from e distracting phone into the natural field of view of smart glasses (**Meta Ray-Ban Display + Meta Neural Band**, with audio fallback for display-less glasses). Instead of ten complex features or configuration forms, it builds on **one single button (`Start Session`)** and **one frictionless finger pinch** that keeps the user in the present moment working on paper, at the board, or at a desk.
+FocusLens moves assistance from e distracting phone into the natural field of view of smart glasses (**Meta Ray-Ban Display + Meta Neural Science Band**, with audio fallback for display-less glasses). Instead of ten complex features or configuration forms, it builds on **one single button (`Start Session`)** and **one frictionless finger pinch** that keeps the user in the present moment working on paper, at the board, or at a desk.
 
 ---
 
