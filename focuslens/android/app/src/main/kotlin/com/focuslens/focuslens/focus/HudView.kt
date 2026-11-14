@@ -34,7 +34,7 @@ fun HudScreen.toJson(cropHash: String?, attention: Boolean = false): JSONObject 
             val shown = index + 1
             put("text", step); put("sub", feedback); put("crop", cropHash); put("formula", tex)
             put("progress", "▰".repeat(shown) + "▱".repeat(maxOf(0, total - shown)) + " $shown/$total")
-            put("footer", Strings.footerQuest)
+            put("footer", footer)
         }
         is HudScreen.Blocks -> {
             o.put("s", "blocks")

@@ -26,7 +26,7 @@ sealed class HudScreen {
         val head: String get() = listOf(Strings.intentLabel(intent), if (goal.isNotBlank()) Strings.anchor(goal) else "").filter { it.isNotEmpty() }.joinToString(" · ")
     }
     /** A micro-step quest: [index] is 0-based; [feedback] = what the last check said (not done yet). */
-    data class Quest(val step: String, val index: Int, val total: Int, val goal: String, val feedback: String?, val crop: Bitmap?, val formula: Bitmap?, val tex: String = "") : HudScreen()
+    data class Quest(val step: String, val index: Int, val total: Int, val goal: String, val feedback: String?, val crop: Bitmap?, val formula: Bitmap?, val tex: String = "", val footer: String = Strings.footerQuest) : HudScreen()
     /** Cards panel (swipe up): [selected] indexes [rows]; at most 4 rows are drawn around it. */
     data class Blocks(val rows: List<BlockRow>, val selected: Int) : HudScreen()
     data class BlockDetail(val title: String, val step: String, val correction: String, val formula: Bitmap?, val tex: String = "") : HudScreen()
@@ -50,10 +50,11 @@ object Hud {
         is HudScreen.Nudge -> centered(screen.title, Strings.footerNudge)
     }
 
+    // The SDK rejects a screen with no component, so the root box is always sent (no background = transparent).
     private fun idle(screen: HudScreen.Idle): ContentScope.() -> Unit = {
-        if (screen.dot) flexBox(direction = Direction.ROW, padding = 24) {
+        flexBox(direction = Direction.ROW, padding = 24) {
             flexBox(direction = Direction.COLUMN, flexGrow = 1f) {}
-            text("●", style = TextStyle.META, color = TextColor.SECONDARY)
+            if (screen.dot) text("●", style = TextStyle.META, color = TextColor.SECONDARY)
         }
     }
 
@@ -80,7 +81,7 @@ object Hud {
             if (screen.feedback != null) text(screen.feedback, style = TextStyle.BODY)
             pictures(screen.crop, screen.formula)
             text("▰".repeat(shown) + "▱".repeat(screen.total - shown) + " $shown/${screen.total}", style = TextStyle.META, color = TextColor.SECONDARY)
-            text(Strings.footerQuest, style = TextStyle.META, color = TextColor.SECONDARY)
+            text(screen.footer, style = TextStyle.META, color = TextColor.SECONDARY)
         }
     }
 

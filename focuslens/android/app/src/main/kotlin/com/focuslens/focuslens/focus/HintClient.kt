@@ -29,15 +29,17 @@ class HintRequest(
     val ask: String = "help",
 )
 
-/** [steps] = 1-4 micro-steps (steps[0] == nextStep); [focusBox] = [ymin, xmin, ymax, xmax] in 0..1000 or null (validated by [Crop]). */
+/** [steps] = 1-6 micro-steps (steps[0] == nextStep); [focusBox] = [ymin, xmin, ymax, xmax] in 0..1000 or null (validated by [Crop]). */
 class HintResponse(
     val nextStep: String, val card: JSONObject, val serverMs: Long?,
     val formula: String = "", val formulaPng: ByteArray? = null,
     val steps: List<String> = listOf(nextStep), val focusBox: IntArray? = null, val mistake: String = "",
     /** intent=recap only: what was just said that matters (<= 25 words), "" otherwise. */
     val recap: String = "",
-    /** What the decision tree picked: answer | fix | recap | next_step | summary | start ("" from an older backend). */
+    /** What the decision tree picked: answer | fix | recap | next_step | summary | start | solve ("" from an older backend). */
     val intent: String = "",
+    /** One LaTeX string per step (same length as [steps], "" = no math); stepFormulas[0] == formula. */
+    val stepFormulas: List<String> = emptyList(),
 )
 
 class CheckResponse(
@@ -83,13 +85,18 @@ object HintClient {
         return post("/api/ai/hint", req.photo, req.audio, meta, timeoutMs) { json, conn ->
             val step = json.optString("next_step").trim()
             if (step.isEmpty()) null
-            else HintResponse(
-                step, json.optJSONObject("card") ?: JSONObject(), serverTiming(conn),
-                json.optString("formula").trim(), decodePng(json.optString("formula_png")),
-                strings(json.optJSONArray("steps")).take(4).ifEmpty { listOf(step) },
-                box(json), json.optString("mistake").trim(), json.optString("recap").trim(),
-                json.optString("intent").trim(),
-            )
+            else {
+                val steps = strings(json.optJSONArray("steps")).take(6).ifEmpty { listOf(step) }
+                val sf = json.optJSONArray("step_formulas")
+                val formulas = steps.indices.map { sf?.optString(it, "")?.trim().orEmpty() }
+                val formula = json.optString("formula").trim()
+                HintResponse(
+                    step, json.optJSONObject("card") ?: JSONObject(), serverTiming(conn),
+                    formula, decodePng(json.optString("formula_png")) ?: if (formula.isNotEmpty()) Latex.png(formula) else null,
+                    steps, box(json), json.optString("mistake").trim(), json.optString("recap").trim(),
+                    json.optString("intent").trim(), formulas,
+                )
+            }
         }
     }
 
@@ -102,9 +109,10 @@ object HintClient {
             .put("mistakes", JSONArray(mistakes.takeLast(10)))
             .put("quest", JSONObject().put("title", title).put("steps", JSONArray(steps)).put("index", index))
         return post("/api/ai/check", photo, null, meta, timeoutMs) { json, _ ->
+            val formula = json.optString("formula").trim()
             CheckResponse(
                 json.optBoolean("done"), json.optString("feedback").trim(),
-                json.optString("formula").trim(), decodePng(json.optString("formula_png")),
+                formula, decodePng(json.optString("formula_png")) ?: if (formula.isNotEmpty()) Latex.png(formula) else null,
                 box(json), json.optString("mistake").trim(),
             )
         }

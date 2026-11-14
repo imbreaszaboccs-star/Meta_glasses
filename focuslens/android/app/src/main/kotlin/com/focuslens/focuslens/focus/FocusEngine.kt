@@ -115,7 +115,9 @@ class FocusEngine(private val app: Context) {
     private data class Shown(val text: String, val cardId: String, val formula: Bitmap? = null, val crop: Bitmap? = null, val tex: String = "", val recap: String = "", val intent: String = "")
 
     // -- quest: a hint with ≥ 2 micro-steps; pinch = "done, check me" --
-    private class Quest(val cardId: String, val title: String, val steps: List<String>) {
+    /** [solve]: a worked calculation to read through: pinch = next step, no camera check. */
+    private class Quest(val cardId: String, val title: String, val steps: List<String>, val formulas: List<String> = emptyList(), val solve: Boolean = false) {
+        val stepBitmaps = HashMap<Int, Bitmap?>() // rendered LaTeX per step index
         var index = 0
         val done = BooleanArray(steps.size)
         var finished = false
@@ -146,7 +148,8 @@ class FocusEngine(private val app: Context) {
     private var dumpPrev = Phase.IDLE
     private var phase = Phase.IDLE
     private val history = ArrayList<Shown>() // last 5 hints, oldest first
-    private val recent = ArrayList<JSONObject>() // last 6 hints of this focus block {situation, title, step}, oldest first
+    private val recent = ArrayList<JSONObject>() // last 6 hints of this focus block {situation, title, step, intent, recap, reaction + internal cardId, atMs}, oldest first
+    private var lastHintAt = 0L
     private var viewIndex = -1
     private var hintJob: Job? = null
     private var hideJob: Job? = null
@@ -719,6 +722,20 @@ class FocusEngine(private val app: Context) {
     /** The last hint's text of this focus block, or null. Main thread. */
     fun lastHintText(): String? = history.lastOrNull()?.text
 
+    private fun setReaction(e: JSONObject?, reaction: String) { e?.put("reaction", reaction) }
+
+    /** recent without internal fields, plus min_ago; reaction only when set. */
+    private fun recentPayload(): JSONArray {
+        val now = SystemClock.elapsedRealtime()
+        val out = JSONArray()
+        for (e in recent) out.put(JSONObject()
+            .put("situation", e.optString("situation")).put("title", e.optString("title")).put("step", e.optString("step"))
+            .put("intent", e.optString("intent")).put("recap", e.optString("recap"))
+            .put("min_ago", ((now - e.optLong("atMs")) / 60000).toInt().coerceIn(0, 600))
+            .also { o -> e.optString("reaction").takeIf { it.isNotEmpty() }?.let { o.put("reaction", it) } })
+        return out
+    }
+
     fun help(source: String) {
         if (run == null) return log("info", "help ignored: no focus block running")
         val now = SystemClock.elapsedRealtime()
@@ -727,6 +744,7 @@ class FocusEngine(private val app: Context) {
         lastHelpAt = now
         if (phase == Phase.THINKING) return showHud(HudScreen.Thinking(Strings.stillThinking))
         quest = null
+        if (now - lastHintAt < 60_000) setReaction(recent.lastOrNull(), "asked_again")
         log("hint", "help from $source")
         runHint(chainCardId = null)
     }
@@ -744,7 +762,7 @@ class FocusEngine(private val app: Context) {
         val sessionId = r.sessionId
         val goal = r.goal
         val known = mistakes.list()
-        val recentJson = JSONArray(recent.toList())
+        val recentJson = recentPayload()
         notice(Strings.bookmarked, 2_000)
         scope.launch {
             try {
@@ -798,6 +816,7 @@ class FocusEngine(private val app: Context) {
             viewIndex = history.lastIndex
             return showCurrentHint()
         }
+        setReaction(recent.lastOrNull { it.optString("cardId") == history[viewIndex.coerceIn(0, history.lastIndex)].cardId }, "asked_next")
         runHint(chainCardId = history[viewIndex.coerceIn(0, history.lastIndex)].cardId)
     }
 
@@ -877,7 +896,7 @@ class FocusEngine(private val app: Context) {
                 val previous = existing?.optJSONArray("steps")?.let { a -> (0 until a.length()).map { a.getJSONObject(it).optString("text") } } ?: emptyList()
                 val photoName = photo?.let { if (isNew) "photo.jpg" else "photo-${previous.size + 1}.jpg" }
                 val ts = CardStore.now()
-                val recentJson = JSONArray(recent.toList())
+                val recentJson = recentPayload()
 
                 if (isNew) withContext(Dispatchers.IO) {
                     val c = CardStore.newCard(id, sessionId, cfg.mode, cfg.language)
@@ -949,12 +968,15 @@ class FocusEngine(private val app: Context) {
         while (history.size > HISTORY) history.removeAt(0)
         recent += JSONObject().put("situation", res.card.optString("situation").ifBlank { config.mode })
             .put("title", res.card.optString("title")).put("step", res.nextStep)
+            .put("intent", res.intent).put("recap", res.recap).put("cardId", id)
+            .put("atMs", SystemClock.elapsedRealtime()).put("reaction", "")
+        lastHintAt = SystemClock.elapsedRealtime()
         while (recent.size > RECENT) recent.removeAt(0)
         viewIndex = history.lastIndex
         run?.let { it.hintCount++; writeSession(it, ended = false) }
         serverOk = true; serverError = null
         if (isQuest) {
-            quest = Quest(id, res.card.optString("title").ifBlank { res.nextStep }, res.steps).also { it.crop = crop; it.formula = formula; it.tex = res.formula }
+            quest = Quest(id, res.card.optString("title").ifBlank { res.nextStep }, res.steps, res.stepFormulas, solve = res.intent == "solve").also { it.crop = crop; if (formula != null) it.stepBitmaps[0] = formula }
             showQuest()
         } else {
             quest = null
@@ -962,7 +984,7 @@ class FocusEngine(private val app: Context) {
         }
         event("card", mapOf("id" to id, "status" to CardStore.STATUS_DONE))
         log("hint", "ok in ${timings.optLong("totalMs")} ms")
-        speakIfNeeded(res.nextStep)
+        speakIfNeeded(listOf(res.recap, res.nextStep).filter { it.isNotBlank() }.joinToString(" "))
 
         // After the HUD is updated: keep the audio on the card according to the setting.
         if (isNew) scope.launch(Dispatchers.IO) { applyAudioPolicy(id, pcm, audio) }
@@ -1032,7 +1054,11 @@ class FocusEngine(private val app: Context) {
         hideJob?.cancel()
         phase = Phase.QUEST
         lastMessage = null
-        showHud(HudScreen.Quest(q.steps[q.index], q.index, q.steps.size, run?.goal.orEmpty(), q.feedback, q.crop, q.formula, q.tex))
+        val override = q.tex.isNotEmpty() // check-feedback formula, valid for the current step only
+        val tex = if (override) q.tex else q.formulas.getOrElse(q.index) { "" }
+        val bmp = if (override) q.formula else if (tex.isEmpty()) null else q.stepBitmaps.getOrPut(q.index) { Latex.bitmap(tex) }
+        showHud(HudScreen.Quest(q.steps[q.index], q.index, q.steps.size, run?.goal.orEmpty(), q.feedback, q.crop, bmp, tex,
+            footer = if (q.solve) Strings.footerSolve else Strings.footerQuest))
         emitStatus()
     }
 
@@ -1048,7 +1074,7 @@ class FocusEngine(private val app: Context) {
 
     private fun onQuestGesture(g: Gesture) {
         when (g) {
-            Gesture.SELECT -> startCheck()
+            Gesture.SELECT -> questCheck()
             Gesture.RIGHT -> questMove(+1)
             Gesture.LEFT -> questMove(-1)
             Gesture.DOWN -> startDump("task")
@@ -1060,7 +1086,12 @@ class FocusEngine(private val app: Context) {
     /** Pinch on a quest step (glasses or the app): the camera checks the step. */
     fun questCheck() {
         if (phase != Phase.QUEST) return log("info", "quest check ignored ($phase)")
-        startCheck()
+        val q = quest ?: return
+        if (!q.solve) return startCheck()
+        // solve: nothing to check, the user reads the worked steps; pinch on the last one closes it
+        if (q.index < q.steps.lastIndex) return questMove(+1)
+        setReaction(recent.lastOrNull { it.optString("cardId") == q.cardId }, "finished")
+        dismiss()
     }
 
     /** Swipe right (+1) / left (-1) in a quest. */
@@ -1069,7 +1100,7 @@ class FocusEngine(private val app: Context) {
         if (phase != Phase.QUEST) return log("info", "quest move ignored ($phase)")
         val i = q.index + d
         if (i !in q.steps.indices) return
-        q.index = i; q.feedback = null
+        q.index = i; q.feedback = null; q.formula = null; q.tex = ""
         policy.onUser(); userAt = clock()
         persistQuest(q)
         showQuest()
@@ -1134,7 +1165,7 @@ class FocusEngine(private val app: Context) {
         q.done[q.index] = true
         policy.onUser(); userAt = clock()
         val last = q.index == q.steps.lastIndex
-        if (last) q.finished = true else q.index++
+        if (last) { q.finished = true; setReaction(recent.lastOrNull { it.optString("cardId") == q.cardId }, "finished") } else q.index++
         q.feedback = null; q.crop = null; q.formula = null; q.tex = ""
         persistQuest(q)
         showHud(HudScreen.Message("✓ " + r.feedback.ifBlank { Strings.stepDone }, ""))

@@ -130,6 +130,7 @@ class CardStore(filesDir: File) {
 
         /** A quest (pinch = camera checks the step) only when the user has to DO something: not for an answer, recap, summary. */
         fun isQuest(res: HintResponse, situation: String): Boolean =
+            (res.intent == "solve" && res.steps.size >= 2) ||
             res.intent in setOf("next_step", "fix", "") && situation != "lecture" &&
                 (res.steps.size >= 2 || (res.steps.size == 1 && situation in setOf("homework", "desk")))
 

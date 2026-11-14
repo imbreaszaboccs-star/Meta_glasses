@@ -17,10 +17,10 @@ class Settings extends ChangeNotifier {
   /// Language of the hints from the backend. The app UI itself is English.
   String get language => _p.getString('language') ?? 'en';
   String get mode => _p.getString('mode') ?? 'auto';
-  int get bufferSec => _p.getInt('bufferSec') ?? 150;
+  int get bufferSec => 120;
   String get keepAudio => _p.getString('keepAudio') ?? 'last60';
   int get hudTimeoutSec => _p.getInt('hudTimeoutSec') ?? 20;
-  bool get readAloud => _p.getBool('readAloud') ?? false;
+  bool get readAloud => _p.getBool('readAloud') ?? true;
   bool get wakeWord => _p.getBool('wakeWord') ?? true;
   bool get nudges => _p.getBool('nudges') ?? true;
   /// Speak the dozing nudge.

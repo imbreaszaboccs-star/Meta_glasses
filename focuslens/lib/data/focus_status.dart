@@ -117,5 +117,5 @@ class FocusStatus {
   bool get remoteConnected => _r['connected'] == true;
   String? get remoteError => _r['lastError'] as String?;
 
-  int get bufferSecConfig => (_sub('config')['bufferSec'] as num?)?.toInt() ?? 150;
+  int get bufferSecConfig => (_sub('config')['bufferSec'] as num?)?.toInt() ?? 120;
 }

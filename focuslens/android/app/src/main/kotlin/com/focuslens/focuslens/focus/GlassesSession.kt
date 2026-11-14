@@ -415,7 +415,12 @@ class GlassesSession(
     fun show(content: ContentScope.() -> Unit) {
         val d = display?.takeIf { displayStarted } ?: return
         scope.launch(Dispatchers.IO) {
-            d.sendContent(content).onFailure { e, _ -> log("error", "sendContent: ${e.description}") }
+            // sendContent throws (not Result) when the layout is invalid; a bad screen must not kill the app.
+            try {
+                d.sendContent(content).onFailure { e, _ -> log("error", "sendContent: ${e.description}") }
+            } catch (e: IllegalArgumentException) {
+                log("error", "sendContent: ${e.message}")
+            }
         }
     }
 

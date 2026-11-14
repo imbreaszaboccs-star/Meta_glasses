@@ -36,5 +36,7 @@ class CardStoreTest {
         assertFalse(CardStore.isQuest(res(listOf("a", "b")), "lecture"))
         assertFalse(CardStore.isQuest(res(listOf("a", "b"), "answer"), "desk"))
         assertFalse(CardStore.isQuest(res(listOf("a")), "reading"))
+        assertTrue(CardStore.isQuest(res(listOf("a", "b"), "solve"), "lecture"))
+        assertFalse(CardStore.isQuest(res(listOf("a"), "solve"), "lecture"))
     }
 }

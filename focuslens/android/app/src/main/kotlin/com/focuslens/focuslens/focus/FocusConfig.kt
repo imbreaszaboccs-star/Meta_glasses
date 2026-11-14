@@ -6,10 +6,10 @@ import android.content.SharedPreferences
 data class FocusConfig(
     val mode: String = "auto",             // auto | lecture | homework | desk
     val language: String = "en",           // language of the hints (the UI is English)
-    val bufferSec: Int = 150,              // 60 | 120 | 150
+    val bufferSec: Int = 120,              // fixed: always the last 2 minutes of audio
     val keepAudio: String = "last60",      // none | last60 | all
     val hudTimeoutSec: Int = 20,           // 0 = never
-    val readAloud: Boolean = false,        // TTS even when the glasses have a display
+    val readAloud: Boolean = true,         // TTS even when the glasses have a display
     val retentionDays: Int = 30,           // 0 = forever
     val wakeWord: Boolean = true,          // "hey lens" on the phone mic (Vosk, on-device)
     val nudges: Boolean = true,            // proactive "key point" / "stuck" nudges on the HUD
@@ -36,7 +36,7 @@ data class FocusConfig(
         return FocusConfig(
             mode = str("mode", mode).takeIf { it in MODES } ?: mode,
             language = str("language", language),
-            bufferSec = int("bufferSec", bufferSec).coerceIn(30, 150),
+            bufferSec = 120, // fixed 2-minute window; incoming values ignored
             keepAudio = str("keepAudio", keepAudio).takeIf { it in KEEP } ?: keepAudio,
             hudTimeoutSec = int("hudTimeoutSec", hudTimeoutSec).coerceIn(0, 120),
             readAloud = bool("readAloud", readAloud),
@@ -67,10 +67,10 @@ data class FocusConfig(
         fun load(p: SharedPreferences) = FocusConfig(
             mode = p.getString("mode", null) ?: "auto",
             language = p.getString("language", null) ?: "en",
-            bufferSec = p.getInt("bufferSec", 150),
+            bufferSec = 120, // fixed 2-minute window; saved values ignored
             keepAudio = p.getString("keepAudio", null) ?: "last60",
             hudTimeoutSec = p.getInt("hudTimeoutSec", 20),
-            readAloud = p.getBoolean("readAloud", false),
+            readAloud = p.getBoolean("readAloud", true),
             retentionDays = p.getInt("retentionDays", 30),
             wakeWord = p.getBoolean("wakeWord", true),
             nudges = p.getBoolean("nudges", true),

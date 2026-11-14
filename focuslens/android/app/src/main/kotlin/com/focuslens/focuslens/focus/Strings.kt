@@ -28,6 +28,7 @@ object Strings {
 
     // quest / note / goal
     const val footerQuest = "pinch = done ✓ · ←→ steps"
+    const val footerSolve = "pinch = next · ←→ steps"
     const val checking = "Checking…"
     const val checkFailed = "Couldn't check, try again."
     const val noPhoto = "Couldn't take a photo."
@@ -49,7 +50,7 @@ object Strings {
     fun timePulse(mins: Int) = "$mins min in session"
     fun intentLabel(intent: String) = when (intent) {
         "answer" -> "Answer"; "fix" -> "Fix this"; "recap" -> "Just said"
-        "next_step" -> "Next step"; "summary" -> "Key idea"; "start" -> "Start here"; else -> ""
+        "next_step" -> "Next step"; "summary" -> "Key idea"; "start" -> "Start here"; "solve" -> "Solution"; else -> ""
     }
 
     // Meta AI connector answers (spoken back by Meta AI)

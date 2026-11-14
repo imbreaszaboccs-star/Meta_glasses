@@ -91,6 +91,7 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
     implementation("androidx.core:core-ktx:1.16.0")
     implementation("androidx.work:work-runtime-ktx:2.10.1")
+    implementation("ru.noties:jlatexmath-android:0.2.0")
     // Todoist/Notion tokens, encrypted on the phone.
     implementation("androidx.security:security-crypto:1.1.0")
     // Wake word "hey lens", offline. Model: tool/get_wake_model.ps1

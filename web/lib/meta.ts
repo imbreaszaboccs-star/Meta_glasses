@@ -1,5 +1,5 @@
 // Request metadata is untrusted: validated + sanitised here, only whitelisted values reach the prompt.
-import { ASK_HINTS, MODE_HINTS, SITUATIONS, clean, langCode } from "@/lib/ai";
+import { ASK_HINTS, INTENTS, MODE_HINTS, REACTIONS, SITUATIONS, clean, langCode } from "@/lib/ai";
 
 export class BadMeta extends Error {}
 const bad = (): never => {
@@ -47,10 +47,19 @@ export function hintMeta(raw: string) {
     recent: list(o.recent, 0, 6, (x) => {
       const r = obj(x);
       const sit = str(r.situation, Infinity, "other");
+      const intent = str(r.intent, Infinity);
+      const reaction = str(r.reaction, Infinity);
+      const recap = clean(str(r.recap, Infinity), 260);
+      const ago = r.min_ago;
+      // Optional fields only when set: keeps the prompt short and old phones' payloads unchanged.
       return {
         situation: (SITUATIONS as readonly string[]).includes(sit) ? sit : "other",
         title: clean(str(r.title, Infinity), 200),
         step: clean(str(r.step, Infinity), 200),
+        ...((INTENTS as readonly string[]).includes(intent) && { intent }),
+        ...(recap && { recap }),
+        ...(typeof ago === "number" && Number.isFinite(ago) && { min_ago: Math.min(600, Math.max(0, Math.round(ago))) }),
+        ...((REACTIONS as readonly string[]).includes(reaction) && { reaction }),
       };
     }),
   };
