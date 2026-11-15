@@ -22,6 +22,7 @@ class Settings extends ChangeNotifier {
   int get hudTimeoutSec => _p.getInt('hudTimeoutSec') ?? 20;
   bool get readAloud => _p.getBool('readAloud') ?? true;
   bool get wakeWord => _p.getBool('wakeWord') ?? true;
+  bool get liveTranscript => _p.getBool('liveTranscript') ?? true;
   bool get nudges => _p.getBool('nudges') ?? true;
   /// Speak the dozing nudge.
   bool get dozeSound => _p.getBool('dozeSound') ?? false;
@@ -41,6 +42,7 @@ class Settings extends ChangeNotifier {
         'readAloud': readAloud,
         'retentionDays': retentionDays,
         'wakeWord': wakeWord,
+        'liveTranscript': liveTranscript,
         'nudges': nudges,
         'audioSource': audioSource,
         'dozeSound': dozeSound,
@@ -69,6 +71,7 @@ class Settings extends ChangeNotifier {
   Future<void> setHudTimeoutSec(int v) => _set('hudTimeoutSec', v);
   Future<void> setReadAloud(bool v) => _set('readAloud', v);
   Future<void> setWakeWord(bool v) => _set('wakeWord', v);
+  Future<void> setLiveTranscript(bool v) => _set('liveTranscript', v);
   Future<void> setNudges(bool v) => _set('nudges', v);
   Future<void> setDozeSound(bool v) => _set('dozeSound', v);
   Future<void> setCollect(bool v) => _set('collect', v);

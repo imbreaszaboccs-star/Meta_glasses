@@ -92,5 +92,38 @@ body{display:grid;place-items:center;min-height:100vh;overflow:hidden}
 #hudMain .pulse{width:14px;height:14px;border-radius:50%;background:var(--accent);animation:pulse 1.2s ease-in-out infinite}
 @keyframes pulse{0%,100%{opacity:.25}50%{opacity:1}}
 
+/* gesture tour (first run): full-screen, strokes on black */
+#tour{position:absolute;inset:0;z-index:20;background:#000;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;padding:28px 28px 64px}
+.tg{width:260px;height:260px;flex:none}
+.tg svg{display:block}
+.tg.down svg{transform:rotate(90deg)}
+.tg.up svg{transform:rotate(-90deg)}
+.tg .ga{stroke:var(--accent)}
+.tg .gf{stroke:var(--fg-2);opacity:.6}
+.tg .gd{fill:var(--accent);stroke:none}
+.tg .gs0{stop-color:var(--accent);stop-opacity:0}
+.tg .gs1{stop-color:var(--accent);stop-opacity:1}
+.tg .gdraw{stroke-dasharray:1;animation:tgdraw .5s var(--ease) both}
+.tg .gpulse{transform-box:fill-box;transform-origin:center;animation:tgpulse 2.4s ease-in-out infinite}
+.tg .gslide{animation:tgslide 1.4s var(--ease) infinite}
+.tg .gpa{animation:tgpa 1.6s ease-in-out infinite}
+.tg .gpb{animation:tgpb 1.6s ease-in-out infinite}
+.tg .gring{transform-box:fill-box;transform-origin:center;opacity:.5;animation:tgring 1.6s ease-out infinite}
+.tg.pop{animation:tgpop .6s var(--ease) both}
+.tg.shake{animation:tgshake .3s linear}
+.tcap{font-size:32px;font-weight:600;line-height:1.2;color:var(--fg);text-align:center;max-width:520px}
+.tdots{display:flex;gap:12px;height:10px}
+.tdots i{display:block;width:10px;height:10px;border-radius:50%;border:2px solid var(--fg-3)}
+.tdots i.cur{border-color:var(--accent)}
+.tdots i.on{background:var(--accent);border-color:var(--accent)}
+.thint{position:absolute;bottom:24px;font-size:18px;color:var(--fg-3)}
+@keyframes tgdraw{from{stroke-dashoffset:1}to{stroke-dashoffset:0}}
+@keyframes tgpulse{0%,100%{transform:scale(1);opacity:.5}50%{transform:scale(1.14);opacity:1}}
+@keyframes tgslide{0%{transform:translateX(0);opacity:0}15%{opacity:1}70%{transform:translateX(130px);opacity:1}100%{transform:translateX(130px);opacity:0}}
+@keyframes tgpa{0%,10%{transform:translateX(0);opacity:1}45%,80%{transform:translateX(60px);opacity:1}100%{transform:translateX(60px);opacity:0}}
+@keyframes tgpb{0%,10%{transform:translateX(0);opacity:1}45%,80%{transform:translateX(-60px);opacity:1}100%{transform:translateX(-60px);opacity:0}}
+@keyframes tgring{0%,44%{transform:scale(1);opacity:0}48%{transform:scale(1);opacity:.9}100%{transform:scale(2.6);opacity:0}}
+@keyframes tgpop{0%{transform:scale(.7)}50%{transform:scale(1.12)}100%{transform:scale(1)}}
+@keyframes tgshake{0%,100%{transform:translateX(0)}25%{transform:translateX(-10px)}75%{transform:translateX(10px)}}
 #codeInput{position:absolute;left:-9999px;width:200px;opacity:0}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}

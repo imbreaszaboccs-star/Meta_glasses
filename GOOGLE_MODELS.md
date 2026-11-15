@@ -86,6 +86,23 @@ On-phone `flutter_tts` stays as the free/offline fallback.
 | Nano Banana (`gemini-3.1-flash-lite-image` …) | image generation/editing | e.g. annotate the photo with a red circle around the mistake on the card |
 | **Gemma 4** (DeepMind, open weights, Apache 2.0; E2B/E4B for phones, 12B for laptops) | on-device text/vision/audio (E2B/E4B audio ≤ 30 s) | offline mode / privacy mode on the phone. Too weak & too short audio window to replace the server call now |
 
+## Rate limits on our key (AI Studio, 2026-11-15)
+Only the models FocusLens uses or may use. RPM / TPM / RPD. "Unlimited" RPD is a rate limit, not free: the prices above still apply.
+
+| Model | RPM | TPM | RPD | Role |
+|---|---|---|---|---|
+| Gemini 3.5 Flash Lite | 30K | 30M | ∞ | hint; background transcript chunks |
+| Gemini 3.1 Flash Lite | 30K | 30M | ∞ | hint fallback |
+| Gemini 3.8 Flash Lite TTS | 1K | 1M | ∞ | spoken output |
+| Gemini 3.5 Transcribe | 1K | 1M | ∞ | verbatim STT with speakers/timestamps |
+| Gemini 3.5 Transcribe Live | ∞ | 500K | ∞ | streaming STT (~1.9K tokens/min per user → ~250 users at once) |
+| Gemini Embedding 2 | 20K | 20M | ∞ | search over cards/sessions |
+| Gemini Decision 1 | 30K | 20M | ∞ | cheap yes/no (e.g. topic shift) |
+| Gemini 3.8 Live / 3 Flash Live | ∞ | 10M / 1M | ∞ | audio↔audio session (not our design) |
+| Gemma 4 31B / 26B | 30 | 16K | 14.4K | tests only, TPM too low for 2 min audio |
+
+Rate limits are not the bottleneck: one user's background transcription is ~1 RPM and ~2K TPM.
+
 ## SDK notes (verified locally with google-genai 3.3.0)
 - `client.models.generate_content` with `types.ThinkingConfig(thinking_level="minimal")`, `response_json_schema=…`.
 - SDK 3.3.0 defaults to API `v1`, which **rejects `speech_config`**. The backend pins `api_version="v1beta"`.

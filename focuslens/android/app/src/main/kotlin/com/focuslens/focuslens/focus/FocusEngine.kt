@@ -106,6 +106,10 @@ class FocusEngine(private val app: Context) {
     private var reconnectAttempts = 0
     private var reconnectJob: Job? = null
     private var tickJob: Job? = null
+    private val timeline = ArrayList<TranscriptChunk>() // live transcript of this focus block, oldest first; memory only
+    private var speechSec = 0       // seconds with speech since the last chunk
+    private var lastChunkAt = 0L
+    private var transcribeJob: Job? = null
     private var testMode = false
     private var batteryWarned = false
     private var lastEnded: Map<String, Any?>? = null
@@ -354,6 +358,7 @@ class FocusEngine(private val app: Context) {
         nudges.reset(); nudges.enabled = config.nudges; nudgeKind = null
         startImu(r)
         history.clear(); recent.clear(); viewIndex = -1
+        timeline.clear(); speechSec = 0; lastChunkAt = SystemClock.elapsedRealtime()
         panel = null
         writeSession(r, ended = false)
 
@@ -366,7 +371,7 @@ class FocusEngine(private val app: Context) {
         attachGlasses()
         speaker.warmUp()
         if (phase == Phase.IDLE) showMessage(Strings.sessionStarted, Strings.sessionStartedHint, autoHideMs = 3_000, passive = true)
-        tickJob = scope.launch { while (isActive) { delay(1_000); nudgeTick(); timePulseTick(); displayTick(); emitStatus() } }
+        tickJob = scope.launch { while (isActive) { delay(1_000); nudgeTick(); timePulseTick(); transcriptTick(); displayTick(); emitStatus() } }
         log("focus", "started ${r.mode}")
         emitStatus()
         return null
@@ -374,7 +379,7 @@ class FocusEngine(private val app: Context) {
 
     fun stopFocus(reason: String = "user") {
         val r = run ?: return
-        hintJob?.cancel(); hideJob?.cancel(); restoreJob?.cancel(); reconnectJob?.cancel(); tickJob?.cancel()
+        hintJob?.cancel(); hideJob?.cancel(); restoreJob?.cancel(); reconnectJob?.cancel(); tickJob?.cancel(); transcribeJob?.cancel()
         checkJob?.cancel(); dumpJob?.cancel(); quest = null; simPhoto = null; simDotUntil = 0L
         nudgeJob?.cancel(); nudgeKind = null
         stopImu()
@@ -387,6 +392,7 @@ class FocusEngine(private val app: Context) {
         run = null
         phase = Phase.IDLE
         history.clear(); recent.clear(); viewIndex = -1
+        timeline.clear()
         panelJob?.cancel(); panel = null
         currentScreen = null
         writeSession(r, ended = true)
@@ -724,16 +730,72 @@ class FocusEngine(private val app: Context) {
 
     private fun setReaction(e: JSONObject?, reaction: String) { e?.put("reaction", reaction) }
 
-    /** recent without internal fields, plus min_ago; reaction only when set. */
+    /** recent without internal fields, plus min_ago; reaction only when set.
+     *  Only hints of the current topic (live transcript) when there is one, else the last [RECENT_SENT] of the last
+     *  [RECENT_MAX_MIN] min: older hints made Flash-Lite anchor on the first topic of the block and keep returning to it. */
     private fun recentPayload(): JSONArray {
         val now = SystemClock.elapsedRealtime()
+        val start = SessionMemory.currentStart(timeline, now)
+        val picked = if (start != null) recent.filter { it.optLong("atMs") >= start }.takeLast(RECENT_SEG_SENT)
+            else recent.takeLast(RECENT_SENT).filter { now - it.optLong("atMs") <= RECENT_MAX_MIN * 60_000L }
         val out = JSONArray()
-        for (e in recent) out.put(JSONObject()
+        for (e in picked) out.put(JSONObject()
             .put("situation", e.optString("situation")).put("title", e.optString("title")).put("step", e.optString("step"))
             .put("intent", e.optString("intent")).put("recap", e.optString("recap"))
-            .put("min_ago", ((now - e.optLong("atMs")) / 60000).toInt().coerceIn(0, 600))
+            .put("min_ago", minAgo(now, e.optLong("atMs")))
             .also { o -> e.optString("reaction").takeIf { it.isNotEmpty() }?.let { o.put("reaction", it) } })
         return out
+    }
+
+    private fun minAgo(now: Long, ms: Long) = ((now - ms) / 60000).toInt().coerceIn(0, 600)
+
+    /** Session memory for the hint: notes of the current topic (older than the 2-min audio clip) + an index of earlier topics. */
+    private fun memoryPayload(): JSONObject? {
+        if (timeline.isEmpty()) return null
+        val now = SystemClock.elapsedRealtime()
+        val sp = SessionMemory.split(timeline, now)
+        val notes = JSONArray()
+        sp.current.filter { it.summary.isNotBlank() && now - it.atMs >= SessionMemory.CHUNK_MS }.takeLast(MEM_NOTES)
+            .forEach { notes.put(JSONObject().put("min_ago", minAgo(now, it.atMs)).put("summary", it.summary)) }
+        val earlier = JSONArray()
+        // ponytail: earlier summary = oldest 300 chars of the segment; summarise per segment if recall of long topics misses
+        sp.earlier.takeLast(MEM_EARLIER).forEach { seg ->
+            earlier.put(JSONObject().put("topic", seg.first().topic)
+                .put("from_min_ago", minAgo(now, seg.first().atMs - SessionMemory.CHUNK_MS))
+                .put("to_min_ago", minAgo(now, seg.last().atMs))
+                .put("summary", seg.map { it.summary }.filter { it.isNotBlank() }.joinToString(" ").take(300)))
+        }
+        return JSONObject().put("topic", sp.current.lastOrNull()?.topic.orEmpty()).put("notes", notes).put("earlier", earlier)
+    }
+
+    /** Once a second: count speech seconds; every [SessionMemory.CHUNK_MS] send the last minute for notes. Main thread. */
+    private fun transcriptTick() {
+        val r = run
+        val m = mic
+        if (!config.liveTranscript || micPaused || m == null || !m.isListening || r == null || !HintClient.isConfigured) { speechSec = 0; return }
+        if (!m.speech.quietFor(10)) speechSec++
+        val now = SystemClock.elapsedRealtime()
+        if (now - lastChunkAt < SessionMemory.CHUNK_MS) return
+        lastChunkAt = now
+        val heard = speechSec
+        speechSec = 0
+        if (heard < MIN_SPEECH_SEC || transcribeJob?.isActive == true || m.bufferedSeconds < 10) return
+        val prev = timeline.lastOrNull()
+        val lang = config.language
+        transcribeJob = scope.launch {
+            val enc = withContext(Dispatchers.Default) {
+                AudioCodec.encode(m.snapshot().takeLast(60 * MicRing.BYTES_PER_SECOND), MicRing.SAMPLE_RATE, app.cacheDir)
+            }
+            val res = withContext(Dispatchers.IO) { HintClient.transcribe(enc, lang, prev?.topic.orEmpty(), prev?.summary.orEmpty()) }
+            val t = res.ok
+            if (t == null) { log("transcript", "failed: ${res.error?.message}"); return@launch }
+            if (run !== r || (t.text.isBlank() && t.summary.isBlank())) return@launch
+            val topic = t.topic.ifBlank { prev?.topic.orEmpty() }
+            val shift = t.shift || prev == null
+            timeline.add(TranscriptChunk(SystemClock.elapsedRealtime(), t.text, t.summary, topic, shift))
+            while (timeline.size > TIMELINE_MAX) timeline.removeAt(0)
+            log("transcript", "$topic${if (shift) " (new topic)" else ""}: ${t.summary.take(80)}")
+        }
     }
 
     fun help(source: String) {
@@ -904,6 +966,7 @@ class FocusEngine(private val app: Context) {
                 val photoName = photo?.let { if (isNew) "photo.jpg" else "photo-${previous.size + 1}.jpg" }
                 val ts = CardStore.now()
                 val recentJson = recentPayload()
+                val memoryJson = memoryPayload()
 
                 if (isNew) withContext(Dispatchers.IO) {
                     val c = CardStore.newCard(id, sessionId, cfg.mode, cfg.language)
@@ -918,12 +981,12 @@ class FocusEngine(private val app: Context) {
                 } else if (photo != null) withContext(Dispatchers.IO) { cards.saveFile(id, photoName!!, photo) }
                 if (isNew) event("card", mapOf("id" to id, "status" to CardStore.STATUS_PENDING))
 
-                val req = HintRequest(photo, audio, cfg.language, cfg.mode, ts, prevOverride ?: previous, id, recentJson, goal, known, ask)
+                val req = HintRequest(photo, audio, cfg.language, cfg.mode, ts, prevOverride ?: previous, id, recentJson, goal, known, ask, memory = memoryJson)
                 var res = withContext(Dispatchers.IO) { HintClient.hint(req) }
                 if (res.error is HintError.TooLarge && pcm != null) {
                     log("hint", "413, retrying with the last 60 s only")
                     val small = withContext(Dispatchers.Default) { AudioCodec.encode(pcm.takeLast(60 * MicRing.BYTES_PER_SECOND), MicRing.SAMPLE_RATE, app.cacheDir, 16_000) }
-                    res = withContext(Dispatchers.IO) { HintClient.hint(HintRequest(photo, small, cfg.language, cfg.mode, ts, prevOverride ?: previous, id, recentJson, goal, known, ask)) }
+                    res = withContext(Dispatchers.IO) { HintClient.hint(HintRequest(photo, small, cfg.language, cfg.mode, ts, prevOverride ?: previous, id, recentJson, goal, known, ask, memory = memoryJson)) }
                 }
                 val tTotal = SystemClock.elapsedRealtime() - t0
                 val timings = JSONObject().put("photoMs", tPhoto).put("encodeMs", tReady).put("aiMs", tTotal - tReady)
@@ -1680,6 +1743,13 @@ class FocusEngine(private val app: Context) {
         private val SITUATIONS = setOf("lecture", "homework", "desk", "reading")
         val SIMS = setOf("start", "lecture_hint", "homework_quest", "bookmark", "milestone", "stuck_l1", "stuck_l2", "lapse_l2", "key_l2", "doze_l2", "stop")
         private const val RECENT = 6
+        private const val RECENT_SENT = 2    // hints of `recent` sent to the AI
+        private const val RECENT_MAX_MIN = 3 // ...and only when this fresh (fallback when there is no current topic)
+        private const val RECENT_SEG_SENT = 3 // hints of the current topic sent to the AI
+        private const val MIN_SPEECH_SEC = 5  // a chunk needs this much speech to be transcribed
+        private const val TIMELINE_MAX = 240  // transcript chunks kept (4 h)
+        private const val MEM_NOTES = 8       // current-topic notes sent with a hint
+        private const val MEM_EARLIER = 6     // earlier topics sent with a hint
         // ponytail: energy VAD on SpeechMeter (RMS_MIN); a loud room just waits until the cap. Calibration knobs.
         private const val TAIL_MIN_MS = 500L        // pinch: audio still in the AudioRecord buffer + the last word
         private const val TAIL_PINCH_MS = 2_500L

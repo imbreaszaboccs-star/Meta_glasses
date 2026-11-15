@@ -21,7 +21,7 @@ export const POST = route(async (req) => {
   const recent = m.recent.filter((r) => r.step);
   const result = await withFallback("hint", s, (model, thinking) => getAi().hint({
     model, thinking, photo, audio, audioMime: audioMime(form), locale: m.locale, mode: m.mode,
-    previous: m.previous, recent, goal: m.goal, mistakes: m.mistakes, ask: m.ask,
+    previous: m.previous, recent, goal: m.goal, mistakes: m.mistakes, ask: m.ask, memory: m.memory,
   }), `photo=${photo?.length ?? 0} audio=${audio?.length ?? 0}`);
   return json(result);
 });

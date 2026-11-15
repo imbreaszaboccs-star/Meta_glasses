@@ -130,6 +130,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 onChanged: settings.setWakeWord,
               ),
               SwitchListTile(
+                title: const Text('Live transcript'),
+                subtitle: const Text('During a focus block, speech is sent to the FocusLens server about once a minute and turned into short notes, so FocusLens remembers the whole session. Notes stay in memory and are gone when the block ends.'),
+                value: settings.liveTranscript,
+                onChanged: settings.setLiveTranscript,
+              ),
+              SwitchListTile(
                 title: const Text('Proactive nudges'),
                 subtitle: const Text('Glasses notice when you drift.'),
                 value: settings.nudges,

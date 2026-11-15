@@ -14,6 +14,7 @@ vi.mock("@/lib/ai", async (orig) => {
       hint: async (o: any) => (rec(o), [{ next_step: "Fix the minus on line 3.", steps: [], formula: "", focus_box: null, mistake: "", card: {} }, { model: o.model }]),
       check: async (o: any) => (rec(o), [{ done: true, feedback: "Sign fixed, nice.", formula: "", focus_box: null, mistake: "" }, {}]),
       dump: async (o: any) => (rec(o), [{ text: "Buy milk" }, {}]),
+      transcribe: async (o: any) => (rec(o), [{ text: "S1: Hi", summary: "Intro", topic: "Matrices", shift: true }, {}]),
       review: async (o: any) => (rec(o), [{ cards: [{ q: "Sign of -(a-b)?", a: "-a+b" }] }, {}]),
       tts: async () => real.pcmToWav(Buffer.alloc(20)),
     }),
@@ -24,6 +25,7 @@ import { Gemini, FALLBACK_CHECK, FALLBACK_STEP, clean, cleanLines, guardCheck, g
 import { GET as health } from "@/app/api/health/route";
 import { POST as check } from "@/app/api/ai/check/route";
 import { POST as dump } from "@/app/api/ai/dump/route";
+import { POST as transcribe } from "@/app/api/ai/transcribe/route";
 import { POST as hint } from "@/app/api/ai/hint/route";
 import { POST as review } from "@/app/api/ai/review/route";
 import { POST as tts } from "@/app/api/ai/tts/route";
@@ -227,6 +229,31 @@ describe("endpoints", () => {
     fake.calls.length = 0;
     await post(dump, { meta: '{"kind":"task","locale":"cs"}', files: AUDIO });
     expect(fake.calls[0].locale).toBe("cs");
+  });
+
+  it("transcribe ok, validation and prev topic", async () => {
+    const r = await post(transcribe, { meta: '{"locale":"cs","prev_topic":"Vectors","prev_summary":"Basics"}', files: AUDIO });
+    expect(r.status).toBe(200);
+    expect(await r.json()).toEqual({ text: "S1: Hi", summary: "Intro", topic: "Matrices", shift: true });
+    expect(fake.calls[0]).toMatchObject({ locale: "cs", prevTopic: "Vectors", prevSummary: "Basics" });
+    expect((await post(transcribe, { meta: "{}" })).status).toBe(422);
+    expect((await post(transcribe, { meta: '{"prev_topic":5}', files: AUDIO })).status).toBe(422);
+    expect((await post(transcribe, { meta: "{}", files: AUDIO, headers: {} })).status).toBe(401);
+  });
+
+  it("hint memory: too many notes rejected, valid memory sanitised", async () => {
+    const notes = Array.from({ length: 11 }, () => ({ min_ago: 1, summary: "x" }));
+    expect((await post(hint, { meta: { memory: { topic: "T", notes } }, files: AUDIO })).status).toBe(422);
+    const memory = {
+      topic: "Matrices", evil: 1,
+      notes: [{ min_ago: 4.4, summary: "Defined rank", extra: "drop" }, { min_ago: 2, summary: "" }],
+      earlier: [{ topic: "Vectors", from_min_ago: 40, to_min_ago: 25, summary: "Basics" }],
+    };
+    expect((await post(hint, { meta: { memory }, files: AUDIO })).status).toBe(200);
+    const m = fake.calls[0].memory;
+    expect(m.notes).toEqual([{ min_ago: 4, summary: "Defined rank" }]);
+    expect(m.earlier[0]).toEqual({ topic: "Vectors", from_min_ago: 40, to_min_ago: 25, summary: "Basics" });
+    expect(m.evil).toBeUndefined();
   });
 
   it("review ok and validation", async () => {

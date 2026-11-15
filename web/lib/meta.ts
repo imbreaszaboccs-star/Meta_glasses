@@ -34,6 +34,30 @@ function userContext(o: Obj) {
   };
 }
 
+const minAgo = (v: unknown) =>
+  typeof v === "number" && Number.isFinite(v) ? Math.min(600, Math.max(0, Math.round(v))) : 0;
+
+function memoryOf(v: unknown) {
+  if (v === undefined || v === null) return undefined;
+  const m = obj(v);
+  return {
+    topic: clean(str(m.topic, Infinity), 80),
+    notes: list(m.notes, 0, 10, (x) => {
+      const n = obj(x);
+      return { min_ago: minAgo(n.min_ago), summary: clean(str(n.summary, Infinity), 300) };
+    }).filter((n) => n.summary),
+    earlier: list(m.earlier, 0, 8, (x) => {
+      const e = obj(x);
+      return {
+        topic: clean(str(e.topic, Infinity), 80),
+        from_min_ago: minAgo(e.from_min_ago),
+        to_min_ago: minAgo(e.to_min_ago),
+        summary: clean(str(e.summary, Infinity), 400),
+      };
+    }),
+  };
+}
+
 export function hintMeta(raw: string) {
   const o = parse(raw);
   const mode = str(o.mode, Infinity, "auto");
@@ -44,6 +68,7 @@ export function hintMeta(raw: string) {
     mode: Object.hasOwn(MODE_HINTS, mode) ? mode : "auto",
     ask: Object.hasOwn(ASK_HINTS, ask) ? ask : "help",
     previous: cleanList(list(o.previous, 0, 5, any), 300),
+    memory: memoryOf(o.memory),
     recent: list(o.recent, 0, 6, (x) => {
       const r = obj(x);
       const sit = str(r.situation, Infinity, "other");
@@ -80,6 +105,15 @@ export function dumpMeta(raw: string) {
   const kind = o.kind ?? "task";
   if (kind !== "task" && kind !== "goal") bad();
   return { kind: kind as "task" | "goal", locale };
+}
+
+export function transcribeMeta(raw: string) {
+  const o = parse(raw);
+  return {
+    locale: langCode(str(o.locale, Infinity, "en")),
+    prevTopic: clean(str(o.prev_topic, Infinity), 80),
+    prevSummary: clean(str(o.prev_summary, Infinity), 300),
+  };
 }
 
 export function reviewIn(body: unknown) {

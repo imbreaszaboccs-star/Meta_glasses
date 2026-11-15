@@ -66,3 +66,6 @@ When the glasses expose `document.modelContext` (Developer Mode or Meta's rollou
 `focuslens_add_note {text}`. Each maps to the relay command of the same meaning and resolves when its ack
 arrives (≤ 8 s, Meta allows 10 s); a failed ack rejects. Tools only exist while the web app is in front.
 Dev: `?mock=1` without `document.modelContext` puts them in `window.focuslensTools` for console tests.
+
+## Gesture tour (`public/g/app.js`, section "gesture tour")
+First-run, learn-by-doing tour (welcome, pinch, swipe right/down/up, done; under a minute). It starts after the next state fetch following a successful pairing (`claim`) unless `localStorage.fl_tour_done` is set, never during a session; Settings > Gesture tour replays it, and `?tour=1` (with `?mock=1` on desktop) forces it. A keyed step ends the moment the matching key arrives (Enter, ArrowRight, ArrowDown, ArrowUp); all keydown is swallowed while it runs, Escape/Backspace or the system Back skips the whole tour. Captions and spoken text live in `public/g/tour/lines.json` (English only, whatever the hint language); voice clips are `public/g/tour/<lang>-<id>.wav` (Gemini TTS, 24 kHz mono WAV), regenerate with `npm run tour-audio` (`-- --force` to redo all, `-- --check` to validate offline).

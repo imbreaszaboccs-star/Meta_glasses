@@ -27,6 +27,8 @@ class HintRequest(
     val goal: String = "",
     val mistakes: List<String> = emptyList(),
     val ask: String = "help",
+    /** Live-transcript session memory (current topic notes + earlier topics), or null. */
+    val memory: JSONObject? = null,
 )
 
 /** [steps] = 1-6 micro-steps (steps[0] == nextStep); [focusBox] = [ymin, xmin, ymax, xmax] in 0..1000 or null (validated by [Crop]). */
@@ -82,6 +84,7 @@ object HintClient {
             .put("goal", req.goal.take(200))
             .put("mistakes", JSONArray(req.mistakes.takeLast(10)))
             .put("ask", req.ask)
+            .also { m -> req.memory?.let { m.put("memory", it) } }
         return post("/api/ai/hint", req.photo, req.audio, meta, timeoutMs) { json, conn ->
             val step = json.optString("next_step").trim()
             if (step.isEmpty()) null
@@ -122,6 +125,20 @@ object HintClient {
     fun dump(audio: EncodedAudio, kind: String, locale: String, timeoutMs: Int = 10_000): HintResult<String> =
         post("/api/ai/dump", null, audio, JSONObject().put("locale", locale).put("kind", kind), timeoutMs) { json, _ ->
             json.optString("text").trim()
+        }
+
+    class Transcript(val text: String, val summary: String, val topic: String, val shift: Boolean)
+
+    /** ~60 s of speech to notes for the live transcript. Blocking; call from Dispatchers.IO. */
+    fun transcribe(
+        audio: EncodedAudio, locale: String, prevTopic: String, prevSummary: String, timeoutMs: Int = 20_000,
+    ): HintResult<Transcript> =
+        post("/api/ai/transcribe", null, audio,
+            JSONObject().put("locale", locale).put("prev_topic", prevTopic).put("prev_summary", prevSummary), timeoutMs) { json, _ ->
+            Transcript(
+                json.optString("text").trim(), json.optString("summary").trim(), json.optString("topic").trim(),
+                json.optBoolean("shift"),
+            )
         }
 
     private fun strings(a: JSONArray?): List<String> =

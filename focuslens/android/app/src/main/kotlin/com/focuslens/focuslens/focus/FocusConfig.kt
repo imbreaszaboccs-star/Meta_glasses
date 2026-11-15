@@ -19,6 +19,7 @@ data class FocusConfig(
     val hudSource: String = "dat",
     val dozeSound: Boolean = false,        // speak the dozing nudge
     val wakeEngine: String = "vosk",       // vosk (phone mic, on-device) | dat (glasses on-device speech, mwdat-speech)
+    val liveTranscript: Boolean = true,    // during a focus block, send ~60 s speech chunks to the server for session notes (kept in memory only)
     val collect: Boolean = false,          // data collection mode: record IMU sessions to filesDir/imu (never leaves the phone)
 ) {
     fun save(p: SharedPreferences) = p.edit()
@@ -26,7 +27,7 @@ data class FocusConfig(
         .putString("keepAudio", keepAudio).putInt("hudTimeoutSec", hudTimeoutSec)
         .putBoolean("readAloud", readAloud).putInt("retentionDays", retentionDays).putBoolean("wakeWord", wakeWord).putBoolean("nudges", nudges)
         .putString("audioSource", audioSource).putString("hudSource2", hudSource)
-        .putString("wakeEngine", wakeEngine).putBoolean("dozeSound", dozeSound).putBoolean("collect", collect).apply()
+        .putString("wakeEngine", wakeEngine).putBoolean("dozeSound", dozeSound).putBoolean("collect", collect).putBoolean("liveTranscript", liveTranscript).apply()
 
     fun merge(m: Map<*, *>?): FocusConfig {
         if (m == null) return this
@@ -48,6 +49,7 @@ data class FocusConfig(
             wakeEngine = str("wakeEngine", wakeEngine).takeIf { it in WAKE_ENGINES } ?: wakeEngine,
             dozeSound = bool("dozeSound", dozeSound),
             collect = bool("collect", collect),
+            liveTranscript = bool("liveTranscript", liveTranscript),
         )
     }
 
@@ -55,6 +57,7 @@ data class FocusConfig(
         "mode" to mode, "language" to language, "bufferSec" to bufferSec, "keepAudio" to keepAudio,
         "hudTimeoutSec" to hudTimeoutSec, "readAloud" to readAloud, "retentionDays" to retentionDays, "wakeWord" to wakeWord, "nudges" to nudges,
         "audioSource" to audioSource, "hudSource" to hudSource, "dozeSound" to dozeSound, "collect" to collect, "wakeEngine" to wakeEngine,
+        "liveTranscript" to liveTranscript,
     )
 
     companion object {
@@ -79,6 +82,7 @@ data class FocusConfig(
             wakeEngine = p.getString("wakeEngine", null) ?: "vosk",
             dozeSound = p.getBoolean("dozeSound", false),
             collect = p.getBoolean("collect", false),
+            liveTranscript = p.getBoolean("liveTranscript", true),
         )
     }
 }

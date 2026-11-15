@@ -8,6 +8,7 @@
     "start": "next start",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
+    "tour-audio": "node --env-file=.env.local scripts/tour-audio.mjs",
     "postinstall": "node -e \"require('fs').cpSync('node_modules/katex/dist','public/g/katex',{recursive:true})\""
   },
   "dependencies": {

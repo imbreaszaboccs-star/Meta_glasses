@@ -74,7 +74,7 @@ async function claim(code) {
   if (code.length !== 8) { banner('●', 'The code has 8 characters', '', 'warn'); return; }
   try {
     const r = await api('/api/r/claim', { method: 'POST', body: { code }, noAuth: true });
-    if (r.status === 200 && r.data && r.data.web_token) { token = r.data.web_token; lsSet('fl_web_token', token); banner('✓', 'Paired'); }
+    if (r.status === 200 && r.data && r.data.web_token) { token = r.data.web_token; lsSet('fl_web_token', token); banner('✓', 'Paired'); tourPending = true; }
     else if (r.status === 429) banner('●', 'Slow down, try again', '', 'warn');
     else banner('●', 'Code invalid or expired', '', 'err');
   } catch (e) { banner('●', 'Network error', '', 'err'); }
@@ -136,6 +136,8 @@ function applyState(d) {
     unwindMenu();
   }
   prevRunning = r;
+  if (r && tour) endTour();
+  if (tourPending) { tourPending = false; if (!r && !lsGet('fl_tour_done')) startTour(); }
 }
 
 // silent: no pending entry, no banner, does not extend the fast-poll window
@@ -217,7 +219,7 @@ function back() {
   if (!nav.length) return;
   try { history.back(); } catch (e) { nav.pop(); render(); }
 }
-window.addEventListener('popstate', () => { if (nav.length) nav.pop(); disarm(); render(); });
+window.addEventListener('popstate', () => { const top = nav[nav.length - 1]; if (nav.length) nav.pop(); if (top && top.t === 'tour') endTour(); disarm(); render(); });
 function unwindMenu() {
   const n = nav.length; if (!n || !hudMenu()) return;
   nav = [];
@@ -386,6 +388,7 @@ function settingsPage() {
     tog('Sensors', 'collect', 'Sensor data collection')
   ];
   if (c.collect) rows.push({ sec: 'Sensors', l: 'Sensor labels', r: S && S.imu && S.imu.label ? str(S.imu.label).replace('_', ' ') : 'None', act: () => push({ t: 'sub', name: 'labels' }) });
+  rows.push({ sec: 'Device', l: 'Gesture tour', r: 'Replay', act: () => startTour() });
   rows.push({ sec: 'Device', l: 'Reconnect glasses', act: () => send('reconnect', {}, 'Reconnecting…') });
   if ((S && S.dev) || MOCK) rows.push({ sec: 'Developer', l: 'Scenarios', r: 'Test the HUD', act: () => push({ t: 'sub', name: 'sims' }) });
   rows.push({ sec: 'Device', l: 'About', r: (phoneOnline ? 'Phone on' : 'Phone off') + ' · ' + (g && g.connected ? 'Glasses' + (typeof g.battery === 'number' ? ' ' + g.battery + '%' : '') : 'Glasses off'), act: null });
@@ -523,6 +526,7 @@ function buildHud() {
 // ---------- input ----------
 document.addEventListener('keydown', (e) => {
   if (e.target === $('codeInput')) return;
+  if (tour) { tourKey(e); return; }
   const k = e.key;
   if (BACKK.includes(k)) {
     if (e.repeat) return; // holds belong to the system
@@ -560,6 +564,114 @@ function reviewStep() {
   render();
 }
 
+// ---------- gesture tour ----------
+// First run after pairing (or Settings > Gesture tour, or ?tour=1): learn-by-doing, each keyed step ends when the gesture is performed.
+// Voice clips: /g/tour/<lang>-<id>.wav, captions: tour/lines.json (npm run tour-audio regenerates the clips). Back skips the whole tour.
+const TOUR = [{ id: 'welcome', glyph: 'hello' }, { id: 'pinch', glyph: 'pinch', key: 'Enter' }, { id: 'save', glyph: 'right', key: 'ArrowRight' },
+  { id: 'note', glyph: 'down', key: 'ArrowDown' }, { id: 'cards', glyph: 'up', key: 'ArrowUp' }, { id: 'done', glyph: 'check' }];
+let tour = null, tourPending = false, tourLoading = false, tourLinesP = null;
+const loadTourLines = () => { if (!tourLinesP) tourLinesP = fetch('/g/tour/lines.json').then((r) => (r.ok ? r.json() : null)).catch(() => null); return tourLinesP; };
+
+const svgEl = (tag, attrs, cls) => {
+  const n = document.createElementNS('http://www.w3.org/2000/svg', tag);
+  for (const k in attrs) n.setAttribute(k, attrs[k]);
+  if (cls) n.setAttribute('class', cls);
+  return n;
+};
+function glyphEl(kind) {
+  const s = svgEl('svg', { viewBox: '0 0 260 260', width: 260, height: 260, fill: 'none', 'stroke-width': 8, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' });
+  const add = (tag, attrs, cls) => s.appendChild(svgEl(tag, attrs, cls));
+  if (kind === 'pinch') {
+    // no guide line: a slashed circle reads as a "forbidden" sign
+    add('circle', { cx: 130, cy: 130, r: 26, 'stroke-width': 5 }, 'ga gring');
+    add('circle', { cx: 70, cy: 130, r: 14 }, 'gd gpa');
+    add('circle', { cx: 190, cy: 130, r: 14 }, 'gd gpb');
+  } else if (kind === 'right' || kind === 'down' || kind === 'up') { // down/up = rotated by the .tg class
+    const d = svgEl('defs', {}), g = svgEl('linearGradient', { id: 'tgfade', gradientUnits: 'userSpaceOnUse', x1: 14, y1: 0, x2: 60, y2: 0 });
+    g.appendChild(svgEl('stop', { offset: 0 }, 'gs0')); g.appendChild(svgEl('stop', { offset: 1 }, 'gs1'));
+    d.appendChild(g); s.appendChild(d);
+    add('line', { x1: 40, y1: 130, x2: 214, y2: 130, 'stroke-width': 3 }, 'gf');
+    add('polyline', { points: '192,104 222,130 192,156' }, 'ga');
+    const m = svgEl('g', {}, 'gslide'); m.appendChild(svgEl('line', { x1: 14, y1: 130, x2: 60, y2: 130, stroke: 'url(#tgfade)' })); m.appendChild(svgEl('circle', { cx: 60, cy: 130, r: 13 }, 'gd'));
+    s.appendChild(m);
+  } else if (kind === 'check') {
+    add('circle', { cx: 130, cy: 130, r: 100, 'stroke-width': 4 }, 'gf');
+    add('polyline', { points: '84,136 118,170 182,96', pathLength: 1 }, 'ga gdraw');
+  } else {
+    add('circle', { cx: 130, cy: 130, r: 104, 'stroke-width': 3 }, 'gf');
+    add('circle', { cx: 130, cy: 130, r: 70 }, 'ga gpulse');
+  }
+  return s;
+}
+
+function stopClip(t) { const a = t.audio; a.onended = a.onerror = null; try { a.pause(); } catch (e) { /* ignore */ } }
+
+async function startTour() {
+  if (tour || tourLoading || running() || !paired()) return;
+  tourLoading = true;
+  const lines = await loadTourLines();
+  tourLoading = false;
+  if (!lines) { lsSet('fl_tour_done', '1'); return; }
+  if (tour || running()) return;
+  const lang = 'en'; // the tour is always English, like the rest of the app UI
+  const ov = el('div'); ov.id = 'tour';
+  const t = tour = { i: 0, n: 0, lang, L: lines[lang], audio: new Audio(), timer: 0, busy: false, ov, gl: el('div', 'tg'), cap: el('div', 'tcap'), dots: el('div', 'tdots') };
+  ov.appendChild(t.gl); ov.appendChild(t.cap); ov.appendChild(t.dots); ov.appendChild(el('div', 'thint', 'back = skip'));
+  $('app').appendChild(ov);
+  nav.push({ t: 'tour' });
+  try { history.pushState({ d: nav.length }, ''); } catch (e) { /* ignore */ }
+  tourGo(0);
+}
+
+function tourGo(i) {
+  const t = tour; if (!t) return;
+  clearTimeout(t.timer); stopClip(t);
+  if (i >= TOUR.length) return endTour();
+  const s = TOUR[i], ln = t.L[s.id];
+  if (!ln) return endTour();
+  const n = ++t.n; t.i = i; t.busy = false;
+  t.gl.className = 'tg' + (s.glyph === 'down' || s.glyph === 'up' ? ' ' + s.glyph : '');
+  t.gl.replaceChildren(glyphEl(s.glyph));
+  t.cap.textContent = ln.show;
+  const done = TOUR.slice(0, i).filter((x) => x.key).length, total = TOUR.filter((x) => x.key).length;
+  t.dots.replaceChildren();
+  for (let k = 0; k < total; k++) t.dots.appendChild(el('i', k < done ? 'on' : k === done && s.key ? 'cur' : ''));
+  const nx = TOUR[i + 1];
+  const next = () => { clearTimeout(t.timer); t.timer = setTimeout(() => { if (tour === t && t.n === n) tourGo(i + 1); }, s.id === 'done' ? 1200 : 0); };
+  const fallback = () => { // no sound: captions carry the step
+    if (s.key || tour !== t || t.n !== n) return;
+    clearTimeout(t.timer);
+    t.timer = setTimeout(next, Math.max(2500, ln.say.split(/\s+/).length * 380));
+  };
+  const a = t.audio;
+  a.onended = s.key ? null : next; a.onerror = fallback;
+  a.src = '/g/tour/' + t.lang + '-' + s.id + '.wav';
+  try { const p = a.play(); if (p && p.catch) p.catch(fallback); } catch (e) { fallback(); }
+  if (nx) { try { const pre = new Audio(); pre.preload = 'auto'; pre.src = '/g/tour/' + t.lang + '-' + nx.id + '.wav'; } catch (e) { /* ignore */ } }
+}
+
+function tourKey(e) {
+  e.preventDefault(); e.stopPropagation();
+  const t = tour;
+  if (e.repeat) return;
+  if (BACKK.includes(e.key)) return endTour();
+  const s = TOUR[t.i];
+  if (!s.key || t.busy) return;
+  if (e.key !== s.key) { t.gl.classList.remove('shake'); void t.gl.offsetWidth; t.gl.classList.add('shake'); return; }
+  t.busy = true; clearTimeout(t.timer); stopClip(t);
+  t.gl.className = 'tg pop'; t.gl.replaceChildren(glyphEl('check'));
+  const i = t.i;
+  t.timer = setTimeout(() => { if (tour === t) tourGo(i + 1); }, 600);
+}
+
+function endTour() {
+  const t = tour; if (!t) return;
+  tour = null;
+  clearTimeout(t.timer); stopClip(t); t.ov.remove();
+  lsSet('fl_tour_done', '1');
+  if (nav.length && nav[nav.length - 1].t === 'tour') back(); else render(); // back(): popstate pops our entry
+}
+
 // ---------- boot ----------
 const loadMock = () => new Promise((res) => { const m = el('script'); m.src = '/g/mock.js'; m.onload = m.onerror = res; document.head.appendChild(m); });
 
@@ -580,5 +692,6 @@ const loadMock = () => new Promise((res) => { const m = el('script'); m.src = '/
     else if (b === 'err') banner('●', 'Phone offline', '', 'err');
   }
   render(); enterPage();
+  if (P.get('tour') === '1') startTour();
   poll();
 })();

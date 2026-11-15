@@ -32,7 +32,7 @@ export async function formOf(req: Request): Promise<FormData> {
 
 export function metaOf(form: FormData): string {
   const m = form.get("meta") ?? "{}";
-  if (typeof m !== "string" || m.length > 8000) throw new HttpError(422, "bad meta");
+  if (typeof m !== "string" || m.length > 16000) throw new HttpError(422, "bad meta");
   return m;
 }
 

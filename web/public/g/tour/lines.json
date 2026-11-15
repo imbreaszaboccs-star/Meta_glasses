@@ -1,0 +1,28 @@
+{
+  "en": {
+    "welcome": {
+      "say": "Hi, I'm FocusLens. Four gestures, under a minute. Use back anytime to skip.",
+      "show": "4 gestures · back skips"
+    },
+    "pinch": {
+      "say": "Zoned out in a lecture? Pinch, and I'll tell you what you missed. Try it now.",
+      "show": "Pinch = what did I miss?"
+    },
+    "save": {
+      "say": "Swipe right to save this moment for your evening review. Try it.",
+      "show": "Swipe right = save for later"
+    },
+    "note": {
+      "say": "A thought distracting you? Swipe down and say it. I'll keep it for later. Try it.",
+      "show": "Swipe down = voice note"
+    },
+    "cards": {
+      "say": "Swipe up to see the cards from this session. Try it.",
+      "show": "Swipe up = your cards"
+    },
+    "done": {
+      "say": "That's it. Swipe left to go back. Start a session on the Session page, or just say: hey lens. Your notes and cards are on your phone too.",
+      "show": "Session → Start session"
+    }
+  }
+}
